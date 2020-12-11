@@ -11,6 +11,8 @@ homepage = "https://github.com/mistiru/odoo-orm"
 python = "^3.9"
 
 [tool.poetry.dev-dependencies]
+pytest-mock = "^3.7.0"
+pytest-cov = "^3.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
