@@ -7,7 +7,7 @@ from odoo_orm.errors import OdooConnectionAlreadyExists, OdooConnectionError, Od
 class TestConnectionCreation:
 
     @staticmethod
-    def teardown():
+    def setup():
         OdooConnection.CONNECTION = None
 
     def test_create_one_connection(self):
