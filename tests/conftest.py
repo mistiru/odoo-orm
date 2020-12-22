@@ -43,3 +43,34 @@ def auth_forbidden_odoo(odoo: OdooConnection, mocker: MockerFixture):
 def connected_odoo(odoo: OdooConnection):
     odoo.connect('', '', '', '')
     yield odoo
+
+
+class OdooConnectionProxy:
+    def __init__(self, data):
+        self.data = data
+
+    def execute(self, *args, **kwargs):
+        return self.data and next(self.data)
+
+    def render_report(self, *args, **kwargs):
+        return self.data and next(self.data)
+
+
+@pytest.fixture
+def odoo_connection_proxy(request, mocker):
+    marker = request.node.get_closest_marker('connection_returns')
+    data = marker and iter(marker.args)
+
+    proxy = OdooConnectionProxy(data)
+    mocker.patch('odoo_orm.orm.connection', proxy)
+    return proxy
+
+
+@pytest.fixture
+def spy_execute(odoo_connection_proxy, mocker):
+    return mocker.spy(odoo_connection_proxy, 'execute')
+
+
+@pytest.fixture
+def spy_render_report(odoo_connection_proxy, mocker):
+    return mocker.spy(odoo_connection_proxy, 'render_report')

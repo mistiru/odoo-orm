@@ -8,7 +8,7 @@ from typing import Any, Generic, Iterable, Optional, Type, TypeVar
 from odoo_orm.connection import OdooConnection
 from odoo_orm.errors import MissingField
 
-odoo = OdooConnection.get_connection()
+connection = OdooConnection.get_connection()
 
 MB = TypeVar('MB', bound='ModelBase')
 Rel = TypeVar('Rel', bound='ModelBase')
@@ -43,23 +43,34 @@ class Field(Generic[T]):
         self.name = name
         if not self.odoo_field_names:
             self.odoo_field_names = self.default_odoo_field_names
-        self.value_field_name = f'_field_{name}_value'
-        # TODO check if available
-        self.has_changed_field_name = f'_field_{name}_has_changed'
-        # TODO check if available
-        setattr(self.model, self.has_changed_field_name, False)
+        self.initial_value_field_name = f'_field_{name}_initial'
 
     def __get__(self, instance: MB, owner: Type[MB]) -> Optional[T]:
-        return getattr(instance, self.value_field_name, None)
+        return getattr(instance, self.value_field_name)
 
     def __set__(self, instance: MB, value: Optional[T]) -> None:
-        if value != getattr(instance, self.value_field_name, None):
-            setattr(instance, self.has_changed_field_name, True)
-        setattr(instance, self.value_field_name, value)
+        self.smart_set(instance, {self.name: value})
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
-        return {self.name}
+        raise NotImplementedError
+
+    @cached_property
+    def value_field_name(self) -> str:
+        return f'_field_{self.name}_value'
+
+    @cached_property
+    def assignable_field_name(self) -> str:
+        return self.name
+
+    def has_changed(self, instance: MB) -> bool:
+        return getattr(instance, self.value_field_name) != getattr(instance, self.initial_value_field_name)
+
+    def smart_set(self, instance: MB, values: dict[str, Optional[T]], *, initial=False) -> None:
+        value = values.get(self.assignable_field_name)
+        setattr(instance, self.value_field_name, value)
+        if initial:
+            setattr(instance, self.initial_value_field_name, value)
 
     def construct(self, **values: Any) -> Any:
         raise NotImplementedError
@@ -72,13 +83,7 @@ class Field(Generic[T]):
         value = self.construct(**relevant_values)
 
         if value is None and not self.null:
-            if isinstance(self, SimpleField):
-                raise MissingField(f'Sur Odoo, {instance.user_friendly_display} ne possède pas de valeur pour son'
-                                   f" champ '{self.odoo_field_name}'")
-            else:
-                field_names = "', '".join(self.odoo_field_names)
-                raise MissingField(f'Sur Odoo, {instance.user_friendly_display} ne possède pas de valeur pour au'
-                                   f" moins un des champs '{field_names}'")
+            raise MissingField(instance, self.odoo_field_names)
 
         return value
 
@@ -93,6 +98,10 @@ class SimpleField(Generic[T], Field[T]):
             super().__init__(null=null)
         else:
             super().__init__(odoo_field_name, null=null)
+
+    @cached_property
+    def default_odoo_field_names(self) -> set[str]:
+        return {self.name}
 
     @cached_property
     def odoo_field_name(self) -> str:
@@ -129,10 +138,12 @@ class StringField(SimpleField[str]):
 
 
 class B64Field(SimpleField[bytes]):
-    to_python = b64decode
 
     def __get__(self, instance: MB, owner: Type[MB]) -> Optional[bytes]:
         return super().__get__(instance, owner)
+
+    def to_python(self, value: Any) -> bytes:
+        return b64decode(value)
 
 
 class BooleanField(SimpleField[bool]):
@@ -181,188 +192,90 @@ class RelatedField(Generic[Rel, T], SimpleField[T]):
 class ModelField(Generic[Rel], RelatedField[Rel, Rel]):
 
     def __set_name__(self, owner: Type[MB], name: str) -> None:
-        self.id_field_name = f'{name}_id'
         super().__set_name__(owner, name)
-        # TODO check if available
-        val = cached_property(self.get_related_or_none)
-        val.__set_name__(owner, self.value_field_name)
-        setattr(owner, self.value_field_name, val)
+
+        self.instance_field_name = f'_field_{name}_instance'
 
     def __get__(self, instance: MB, owner: Type[MB]) -> Optional[Rel]:
-        return super().__get__(instance, owner)
-
-    def __set__(self, instance: MB, value: Optional[Rel]) -> None:
-        if instance.id != getattr(instance, self.id_field_name):
-            setattr(instance, self.has_changed_field_name, True)
-        setattr(instance, self.value_field_name, value)
-        setattr(instance, self.id_field_name, value and value.id or None)
+        rel_id = getattr(instance, self.value_field_name)
+        if rel_id is None:
+            return None
+        else:
+            rel_instance = getattr(instance, self.instance_field_name, None)
+            if rel_instance is None:
+                rel_instance = self.related_model.objects.get(id=rel_id)
+                setattr(instance, self.instance_field_name, rel_instance)
+            return rel_instance
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
-        return {self.id_field_name}
+        return {self.value_field_name}
+
+    @cached_property
+    def value_field_name(self) -> str:
+        return f'{self.name}_id'
+
+    @cached_property
+    def assignable_field_name(self) -> str:
+        return self.value_field_name
+
+    def smart_set(self, instance: MB, values: dict[str, Optional[Rel]], *, initial=False) -> None:
+        if self.name in values:
+            value = values[self.name]
+            setattr(instance, self.instance_field_name, value)
+            super().smart_set(instance, {self.value_field_name: value.id}, initial=initial)
+        else:
+            super().smart_set(instance, values, initial=initial)
 
     def to_python(self, value: Any) -> Any:
         return value[0]
 
-    def get_related_or_none(self, instance: MB) -> Optional[Rel]:
-        related_model_id = getattr(instance, self.id_field_name)
-        if related_model_id is None:
-            return None
-        else:
-            return self.related_model.objects.get(id=related_model_id)
 
-
-class ModelListField(Generic[Rel], RelatedField[Rel, 'RelatedManager[Rel]']):
+class ModelListField(Generic[Rel], RelatedField[Rel, 'QuerySet[Rel]']):
 
     def __set_name__(self, owner: Type[MB], name: str) -> None:
-        self.ids_field_name = f'{name}_ids'
         super().__set_name__(owner, name)
-        # TODO check if available
-        val = cached_property(self.get_related_manager_or_none)
-        val.__set_name__(owner, self.value_field_name)
-        setattr(owner, self.value_field_name, val)
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional['RelatedManager[Rel]']:
-        return super().__get__(instance, owner)
+        self.queryset_field_name = f'_field_{name}_queryset'
 
-    def __set__(self, instance: MB, value: Optional['RelatedManager[Rel]']) -> None:
-        raise AttributeError
+    def __get__(self, instance: MB, owner: Type[MB]) -> Optional['QuerySet[Rel]']:
+        rel_ids = getattr(instance, self.value_field_name)
+        if rel_ids is None:
+            return None
+        else:
+            queryset = getattr(instance, self.queryset_field_name, None)
+            if queryset is None:
+                queryset = QuerySet(self.related_model).filter(id__in=rel_ids)
+                setattr(instance, self.queryset_field_name, queryset)
+            return queryset
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
-        return {self.ids_field_name}
+        return {self.value_field_name}
 
-    def get_related_manager_or_none(self, instance: MB) -> Optional['RelatedManager[Rel]']:
-        related_model_ids = getattr(instance, self.ids_field_name)
-        if related_model_ids is None:
-            return None
+    @cached_property
+    def value_field_name(self) -> str:
+        return f'{self.name}_ids'
+
+    @cached_property
+    def assignable_field_name(self) -> str:
+        return self.value_field_name
+
+    def smart_set(self, instance: MB, values: dict[str, Optional[T]], *, initial=False) -> None:
+        if self.name in values:
+            value = values[self.name]
+            ids = [i.id for i in value]
+
+            queryset = QuerySet(self.related_model).filter(id__in=ids)
+            queryset.cache = value
+            setattr(instance, self.queryset_field_name, queryset)
+
+            super().smart_set(instance, {self.value_field_name: ids}, initial=initial)
         else:
-            return RelatedManager(self.related_model, instance, self)
+            super().smart_set(instance, values, initial=initial)
 
-
-class MetaModel(type):
-
-    def __init__(cls: Type[MB], name: str, bases: tuple[type], attrs: dict[str, Any]) -> None:
-        super().__init__(name, bases, attrs)
-
-        cls.fields = {}
-        if name != 'Model':
-            for base in reversed(bases):
-                if issubclass(base, ModelBase):
-                    for attr_name, field in base.fields.items():
-                        cls.fields[attr_name] = field
-        for attr_name, attr_value in attrs.items():
-            if isinstance(attr_value, Field):
-                cls.fields[attr_name] = attr_value
-
-        if name != 'Model' and getattr(cls, 'objects', None) is None:
-            cls.objects = Manager(cls)
-
-        if name != 'Model':
-            if getattr(cls, 'Meta', None) is None:
-                cls.Meta = type('Meta', (), {})
-            if getattr(cls.Meta, 'name', None) is None:
-                cls.Meta.name = c2s(name)
-
-
-class ModelBase(Generic[MB], metaclass=MetaModel):
-    fields: dict[str, Field]
-    objects: 'Manager[MB]'
-
-    id = IntegerField()
-
-    class Meta:
-        name: str
-
-    class DoesNotExist(Exception):
-        pass
-
-    class MultipleObjectsReturned(Exception):
-        pass
-
-    def __init__(self, **odoo_dict: Any) -> None:
-        for field in self.fields.values():
-            value = field.construct_and_validate(self, **odoo_dict)
-            if isinstance(field, ModelField):
-                setattr(self, field.id_field_name, value)
-            elif isinstance(field, ModelListField):
-                setattr(self, field.ids_field_name, value)
-            else:
-                setattr(self, field.value_field_name, value)
-
-    def __repr__(self) -> str:
-        return self.pprint()
-
-    def pprint(self, padding=0) -> str:
-        string = f'{self.__class__.__name__} {{\n'
-
-        for field in self.fields.values():
-            value = getattr(self, field.name)
-            if value is None:
-                continue
-
-            if isinstance(field, ModelField):
-                string += f'{" " * 2 * padding}  {field.name}: {value.pprint(padding + 1)}\n'
-            elif isinstance(field, ModelListField):
-                string += f'{" " * 2 * padding}  {field.name}: [\n'
-                string += ',\n'.join(f'{" " * 2 * padding}    {instance.pprint(padding + 2)}'
-                                     for instance in value)
-                string += ']\n'
-            else:
-                string += f'{" " * 2 * padding}  {field.name}: {repr(value)}\n'
-
-        return f'{string}{" " * 2 * padding}}}'
-
-    @classmethod
-    def all_fields_odoo_names(cls):
-        for field in cls.fields.values():
-            for name in field.odoo_field_names:
-                yield name
-
-    @classmethod
-    def field_odoo_names(cls, field_name):
-        for name in cls.fields[field_name].odoo_field_names:
-            yield name
-
-    def save(self) -> None:
-        values = {}
-        for field in self.fields.values():
-            if isinstance(field, ModelListField):
-                continue
-
-            if isinstance(field, ModelField):
-                value = getattr(self, field.id_field_name, None)
-            else:
-                value = getattr(self, field.value_field_name, None)
-
-            if value is None:
-                continue
-
-            has_changed = getattr(self, field.has_changed_field_name)
-            if not has_changed:
-                continue
-
-            values.update(field.deconstruct(value))
-
-        odoo.execute(self.Meta.name, 'write', self.id, values)
-
-
-class Attachment(ModelBase['Attachment']):
-    content = B64Field('datas')
-
-    class Meta:
-        name = 'ir.attachment'
-
-
-class Model(ModelBase['Model']):
-
-    @property
-    def attachments(self) -> 'QuerySet[Attachment]':
-        return Attachment.objects.values('id').filter(res_model=self.Meta.name, res_id=self.id)
-
-    def render_report(self, report_name: str, **options) -> bytes:
-        report_data = odoo.render_report(report_name, self.id, **options)
-        return b64decode(report_data['result'])
+    def to_odoo(self, value: T) -> Any:
+        return [(6, '_', value)]
 
 
 class QuerySet(Generic[MB]):
@@ -389,13 +302,21 @@ class QuerySet(Generic[MB]):
             self._execute()
         return len(self.cache)
 
+    def __eq__(self, other) -> bool:
+        if type(self) == type(other):
+            return (self.filters == other.filters
+                    and self.options == other.options
+                    and (self.cache is None and other.cache is None and self.prefetches == other.prefetches
+                         or self.cache is not None and self.cache == other.cache))
+        return False
+
     def _execute(self) -> list[MB]:
         if 'fields' not in self.options:
             self.options['fields'] = list(self.model.all_fields_odoo_names())
 
-        res = odoo.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
+        res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
 
-        self.cache = [self.model(**data) for data in res]
+        self.cache = [self.model.from_odoo(**data) for data in res]
 
         self._prefetch(*list(self.prefetches))
 
@@ -408,7 +329,7 @@ class QuerySet(Generic[MB]):
 
         for kw, val in kwargs.items():
             if kw == 'limit':
-                new.options['limit'] = 1
+                new.options['limit'] = val
             elif kw == 'filter':
                 for name, value in val.items():
                     parts = name.split('__')
@@ -468,21 +389,21 @@ class QuerySet(Generic[MB]):
             field = self.model.fields[field_name]
 
             if isinstance(field, ModelField):
-                all_ids = set(getattr(instance, field.id_field_name) for instance in self)
+                all_ids = set(getattr(instance, field.value_field_name) for instance in self)
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 for instance in self:
                     setattr(instance, field_name,
-                            next(r for r in related if r.id == getattr(instance, field.id_field_name)))
+                            next(r for r in related if r.id == getattr(instance, field.value_field_name)))
             elif isinstance(field, ModelListField):
                 all_ids = set()
                 for instance in self:
-                    all_ids |= set(getattr(instance, field.ids_field_name))
+                    all_ids |= set(getattr(instance, field.value_field_name))
 
                 related = field.related_model.objects.filter(id__in=list(all_ids))
 
                 for instance in self:
-                    selection = [r for r in related if r.id in getattr(instance, field.ids_field_name)]
-                    getattr(instance, field_name).queryset.cache = selection
+                    selection = [r for r in related if r.id in getattr(instance, field.value_field_name)]
+                    getattr(instance, field_name).cache = selection
             else:
                 raise ValueError('Only support prefetch on RelatedFields')
 
@@ -508,31 +429,131 @@ class Manager(Generic[MB]):
         return self.queryset.get(**kwargs)
 
 
-class RelatedManager(Generic[Rel], Manager[Rel]):
+class MetaModel(type):
 
-    def __init__(self, model: Type[MB], instance: MB, field: ModelListField[Rel]) -> None:
-        super().__init__(model)
-        self.instance = instance
-        self.field = field
-        self.queryset = self.queryset.filter(id__in=getattr(instance, field.ids_field_name))
+    def __init__(cls: Type[MB], name: str, bases: tuple[type], attrs: dict[str, Any]) -> None:
+        super().__init__(name, bases, attrs)
 
-    def __iter__(self) -> Iterable[Rel]:
-        return iter(self.queryset)
+        cls.fields = {}
+        if name != 'ModelBase':
+            for base in reversed(bases):
+                if issubclass(base, ModelBase):
+                    for attr_name, field in base.fields.items():
+                        cls.fields[attr_name] = field
+        for attr_name, attr_value in attrs.items():
+            if isinstance(attr_value, Field):
+                cls.fields[attr_name] = attr_value
 
-    def __getitem__(self, item: int) -> Rel:
-        return self.queryset[item]
+        if 'objects' not in cls.__dict__:
+            cls.objects = Manager(cls)
 
-    def __len__(self) -> int:
-        return len(self.queryset)
+        if 'Meta' not in cls.__dict__:
+            cls.Meta = type('Meta', (), {})
+        if 'name' not in cls.Meta.__dict__:
+            cls.Meta.name = c2s(name)
 
-    def set(self, instances: list[Rel]) -> None:
-        ids: list[int] = [i.id for i in instances]
-        self.field: ModelListField[Rel]
-        setattr(self.instance, self.field.ids_field_name, ids)
-        self.queryset = QuerySet(self.queryset.model).filter(id__in=ids)
-        self.queryset.cache = instances
-        (odoo.execute(self.instance.Meta.name, 'write', self.instance.id,
-                      {list(self.field.odoo_field_names)[0]: [(6, '_', ids)]}))
 
-    def prefetch(self, *field_names: str) -> QuerySet[Rel]:
-        return self.queryset.prefetch(*field_names)
+class ModelBase(Generic[MB], metaclass=MetaModel):
+    fields: dict[str, Field]
+    objects: Manager[MB]
+
+    id = IntegerField()
+
+    class Meta:
+        name: str
+
+    class DoesNotExist(Exception):
+        pass
+
+    class MultipleObjectsReturned(Exception):
+        pass
+
+    def __init__(self, **values: Any) -> None:
+        for field in self.fields.values():
+            field.smart_set(self, values)
+
+    def __eq__(self, other) -> bool:
+        if type(self) == type(other):
+            for field in self.fields.values():
+                value = getattr(self, field.value_field_name)
+                other_value = getattr(other, field.value_field_name)
+                if value != other_value:
+                    return False
+            return True
+        return False
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({self.id})'
+
+    def pprint(self) -> str:
+        string = f'{self.__class__.__name__} {{'
+
+        for field in self.fields.values():
+            value = getattr(self, field.value_field_name)
+            if value is None:
+                continue
+
+            if isinstance(field, ModelField):
+                string += f'\n  {field.name}: {field.related_model.__name__}({value})'
+            elif isinstance(field, ModelListField):
+                string += f'\n  {field.name}: {field.related_model.__name__}{value}'
+            else:
+                string += f'\n  {field.name}: {repr(value)}'
+
+        if string[-1] != '{':
+            string += '\n'
+
+        return string + '}'
+
+    @classmethod
+    def all_fields_odoo_names(cls):
+        for field in cls.fields.values():
+            for name in field.odoo_field_names:
+                yield name
+
+    @classmethod
+    def field_odoo_names(cls, field_name):
+        for name in cls.fields[field_name].odoo_field_names:
+            yield name
+
+    @classmethod
+    def from_odoo(cls, **odoo_values) -> MB:
+        instance = cls()
+        for field in instance.fields.values():
+            value = field.construct_and_validate(instance, **odoo_values)
+            field.smart_set(instance, {field.assignable_field_name: value}, initial=True)
+        return instance
+
+    def save(self) -> None:
+        values = {}
+        for field in self.fields.values():
+            value = getattr(self, field.value_field_name)
+
+            if not field.has_changed(self):
+                continue
+
+            values.update(field.deconstruct(value))
+
+        if 'id' in values:
+            raise Exception('Instance creation and id update are not supported yet')
+
+        if values:
+            connection.execute(self.Meta.name, 'write', self.id, values)
+
+
+class Attachment(ModelBase['Attachment']):
+    content = B64Field('datas')
+
+    class Meta:
+        name = 'ir.attachment'
+
+
+class Model(Generic[MB], ModelBase[MB]):
+
+    @property
+    def attachments(self) -> QuerySet[Attachment]:
+        return Attachment.objects.values('id').filter(res_model=self.Meta.name, res_id=self.id)
+
+    def render_report(self, report_name: str, **options) -> bytes:
+        report_data = connection.render_report(report_name, self.id, **options)
+        return b64decode(report_data['result'])
