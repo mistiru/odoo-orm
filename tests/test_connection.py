@@ -1,7 +1,8 @@
 import pytest
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected
+from odoo_orm.errors import (OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected,
+                             UnsafeOperationNotAllowed)
 
 
 class TestConnectionCreation:
@@ -65,7 +66,27 @@ class TestConnectionUsage:
         return_value = connected_odoo.execute(name, action, *params, **options)
         assert return_value == ('', 1, '', *args)
 
-    def test_render_report_must_pass_arguments(self, connected_odoo: OdooConnection):
+    def test_render_report_must_pass_arguments(self, connected_safe_odoo: OdooConnection):
         args = report_name, [model_id], options = 'fixture.render_model', [7], {'tutturu': 'ohayou~'}
-        return_value = connected_odoo.render_report(report_name, model_id, **options)
+        return_value = connected_safe_odoo.render_report(report_name, model_id, **options)
         assert return_value == ('', 1, '', *args)
+
+
+class TestConnectionSafety:
+
+    def test_unsafe_odoo_can_only_read_and_search(self, connected_odoo: OdooConnection):
+        for action in ('search', 'search_read', 'read'):
+            connected_odoo.execute('some.model', action)
+
+        for action in ('create', 'write', 'unlink'):
+            with pytest.raises(UnsafeOperationNotAllowed):
+                connected_odoo.execute('some.model', action)
+
+        with pytest.raises(UnsafeOperationNotAllowed):
+            connected_odoo.render_report('some.model', 1)
+
+    def test_connected_safe_odoo_can_do_anything(self, connected_safe_odoo: OdooConnection):
+        for action in ('search', 'search_read', 'read', 'create', 'write', 'unlink'):
+            connected_safe_odoo.execute('some.model', action)
+
+        connected_safe_odoo.render_report('some.model', 1)

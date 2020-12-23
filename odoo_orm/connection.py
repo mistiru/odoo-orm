@@ -2,7 +2,8 @@ import logging
 from typing import Any
 from xmlrpc.client import ServerProxy
 
-from odoo_orm.errors import OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected
+from odoo_orm.errors import OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected, \
+    UnsafeOperationNotAllowed
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class OdooConnection:
     db: str
     uid: int
     password: str
+    safe: bool
     models: ServerProxy
     reports: ServerProxy
 
@@ -29,7 +31,7 @@ class OdooConnection:
         else:
             return cls()
 
-    def connect(self, url: str, db: str, user: str, password: str) -> None:
+    def connect(self, url: str, db: str, user: str, password: str, safe: bool = False) -> None:
         if hasattr(self, 'uid'):
             raise OdooConnectionError('Already connected')
 
@@ -39,25 +41,32 @@ class OdooConnection:
                 self.db = db
                 self.uid = uid
                 self.password = password
+                self.safe = safe
                 self.models = ServerProxy(f'{url}/xmlrpc/2/object')
                 self.reports = ServerProxy(f'{url}/xmlrpc/2/report')
             else:
                 raise OdooConnectionError('Wrong email or password')
 
     def execute(self, model: str, action: str, *params, **options) -> list[dict[str, Any]]:
-        try:
-            with self.models:
-                logger.debug(f'models.execute_kw({self.db!r}, {self.uid!r}, {self.password!r}, {model!r}, {action!r},'
-                             f' {params!r}, {options!r})')
-                return self.models.execute_kw(self.db, self.uid, self.password, model, action, params, options)
-        except AttributeError:
+        if not hasattr(self, 'models'):
             raise OdooConnectionNotConnected('You must connect before doing any request')
 
+        if not self.safe and action not in ('search', 'search_read', 'read'):
+            raise UnsafeOperationNotAllowed('Trying to perform an unsafe operation in unsafe environment')
+
+        with self.models:
+            logger.debug(f'models.execute_kw({self.db!r}, {self.uid!r}, {self.password!r}, {model!r}, {action!r},'
+                         f' {params!r}, {options!r})')
+            return self.models.execute_kw(self.db, self.uid, self.password, model, action, params, options)
+
     def render_report(self, report_name: str, model_id: int, **options) -> dict[str, Any]:
-        try:
-            with self.reports:
-                logger.debug(f'reports.render_report({self.db!r}, {self.uid!r}, {self.password!r}, {report_name!r},'
-                             f' {[model_id]!r}, {options!r})')
-                return self.reports.render_report(self.db, self.uid, self.password, report_name, [model_id], options)
-        except AttributeError:
+        if not hasattr(self, 'reports'):
             raise OdooConnectionNotConnected('You must connect before doing any request')
+
+        if not self.safe:
+            raise UnsafeOperationNotAllowed('Trying to perform an unsafe operation in unsafe environment')
+
+        with self.reports:
+            logger.debug(f'reports.render_report({self.db!r}, {self.uid!r}, {self.password!r}, {report_name!r},'
+                         f' {[model_id]!r}, {options!r})')
+            return self.reports.render_report(self.db, self.uid, self.password, report_name, [model_id], options)

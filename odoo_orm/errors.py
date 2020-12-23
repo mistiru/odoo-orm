@@ -10,6 +10,10 @@ class OdooConnectionNotConnected(OdooConnectionError):
     pass
 
 
+class UnsafeOperationNotAllowed(OdooConnectionError):
+    pass
+
+
 class OdooORMError(Exception):
     pass
 

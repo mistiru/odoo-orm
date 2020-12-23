@@ -36,13 +36,19 @@ def odoo(mocker: MockerFixture):
 @pytest.fixture
 def auth_forbidden_odoo(odoo: OdooConnection, mocker: MockerFixture):
     mocker.patch('odoo_orm.connection.ServerProxy.authenticate', lambda *args, **kwargs: None)
-    yield odoo
+    return odoo
 
 
 @pytest.fixture
 def connected_odoo(odoo: OdooConnection):
     odoo.connect('', '', '', '')
-    yield odoo
+    return odoo
+
+
+@pytest.fixture
+def connected_safe_odoo(odoo: OdooConnection):
+    odoo.connect('', '', '', '', True)
+    return odoo
 
 
 class OdooConnectionProxy:
