@@ -542,6 +542,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
 
 
 class Attachment(ModelBase['Attachment']):
+    name = StringField()
     content = B64Field('datas')
 
     class Meta:
@@ -552,7 +553,7 @@ class Model(Generic[MB], ModelBase[MB]):
 
     @property
     def attachments(self) -> QuerySet[Attachment]:
-        return Attachment.objects.values('id').filter(res_model=self.Meta.name, res_id=self.id)
+        return Attachment.objects.filter(res_model=self.Meta.name, res_id=self.id)
 
     def render_report(self, report_name: str, **options) -> bytes:
         report_data = connection.render_report(report_name, self.id, **options)

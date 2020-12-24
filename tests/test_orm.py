@@ -304,7 +304,6 @@ class TestQuerySet:
         queryset = QuerySet(SomeModel).prefetch('some_list_field')
         spy_execute.assert_not_called()
         instances = list(queryset)
-        print(spy_execute.call_args_list)
         assert spy_execute.call_args_list == [
             call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
             call('model.base', 'search_read', [('id', 'in', [2, 3, 4])],
@@ -451,6 +450,9 @@ class TestModel:
     def test_attachments(self, spy_execute: MagicMock):
         instance = Model(id=1)
         assert list(instance.attachments) == [Attachment(id=2)]
+        spy_execute.assert_called_once_with('ir.attachment', 'search_read',
+                                            [('res_model', '=', 'model'), ('res_id', '=', 1)],
+                                            fields=['id', 'name', 'datas'])
 
     @pytest.mark.connection_returns({'result': b64encode(b'tutturu')})
     def test_render_report(self, spy_render_report: MagicMock):
