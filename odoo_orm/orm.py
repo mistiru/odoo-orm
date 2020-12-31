@@ -203,7 +203,14 @@ class ModelField(Generic[Rel], RelatedField[Rel, Rel]):
         else:
             rel_instance = getattr(instance, self.instance_field_name, None)
             if rel_instance is None:
-                rel_instance = self.related_model.objects.get(id=rel_id)
+                if isinstance(self.related_model, type) and issubclass(self.related_model, ModelBase):
+                    rel_model = self.related_model
+                elif self.related_model == 'self':
+                    rel_model = owner
+                else:
+                    raise Exception('Only subclasses of "ModelBase" and "self" are accepted as "model" argument of'
+                                    ' ModelField')
+                rel_instance = rel_model.objects.get(id=rel_id)
                 setattr(instance, self.instance_field_name, rel_instance)
             return rel_instance
 
