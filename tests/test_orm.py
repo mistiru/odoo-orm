@@ -32,6 +32,7 @@ class SomeModel(ModelBase['SomeModel']):
     some_decimal_field = DecimalField()
     some_date_field = DateField(date_format='%Y, %m-%d')
     some_chain_field = ModelField(model='self')
+    some_chain_list_field = ModelListField(model='self')
 
 
 @pytest.fixture
@@ -64,7 +65,8 @@ class TestMetaModel:
                                  ('some_list_field', ModelListField), ('some_named_field', StringField),
                                  ('some_null_field', StringField), ('some_b64_field', B64Field),
                                  ('some_boolean_field', BooleanField), ('some_decimal_field', DecimalField),
-                                 ('some_date_field', DateField), ('some_chain_field', ModelField)):
+                                 ('some_date_field', DateField), ('some_chain_field', ModelField),
+                                 ('some_chain_list_field', ModelListField)):
             assert name in SomeModel.fields
             assert isinstance(SomeModel.fields[name], field_type)
 
@@ -143,6 +145,13 @@ class TestField:
         instance = SomeModel.from_odoo(some_list_field_ids=[3, 4])
         assert list(map(attrgetter('id'), instance.some_list_field)) == [3, 4]
         spy_execute.assert_called_once_with('model.base', 'search_read', [('id', 'in', [3, 4])], fields=['id'])
+
+    @pytest.mark.connection_returns([{'id': 3}, {'id': 4}])
+    def test_chain_list_field(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(some_chain_list_field_ids=[3, 4])
+        assert list(map(attrgetter('id'), instance.some_chain_list_field)) == [3, 4]
+        spy_execute.assert_called_once_with('some.model', 'search_read', [('id', 'in', [3, 4])],
+                                            fields=list(SomeModel.all_fields_odoo_names()))
 
 
 class TestQuerySet:
@@ -358,7 +367,8 @@ class TestModelBase:
         assert list(SomeModel.all_fields_odoo_names()) == ['id', 'some_field', 'some_related_field_id',
                                                            'some_list_field_ids', 'named_string', 'some_null_field',
                                                            'some_b64_field', 'some_boolean_field', 'some_decimal_field',
-                                                           'some_date_field', 'some_chain_field_id']
+                                                           'some_date_field', 'some_chain_field_id',
+                                                           'some_chain_list_field_ids']
 
     def test_field_odoo_names(self):
         assert list(SomeModel.field_odoo_names('some_field')) == ['some_field']
