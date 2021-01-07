@@ -332,6 +332,25 @@ class TestQuerySet:
         assert instances[2].some_list_field.cache == [ModelBase(id=4)]
         spy_execute.assert_not_called()
 
+    @pytest.mark.connection_returns([{'id': 1, 'some_chain_field_id': [3, 'tut']},
+                                     {'id': 2, 'some_chain_field_id': [4, 'pouet']}],
+                                    [{'id': 3, 'some_related_field_id': [5, 'bidule']},
+                                     {'id': 4, 'some_related_field_id': [5, 'bidule']}],
+                                    [{'id': 5}])
+    def test_prefetch_follows_related_fields(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel).prefetch('some_chain_field__some_related_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'search_read', [('id', 'in', [3, 4])], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [5])], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[1].some_chain_field.id == 4
+        assert instances[0].some_chain_field.some_related_field.id == 5
+        assert instances[1].some_chain_field.some_related_field.id == 5
+        spy_execute.assert_not_called()
+
     @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [3, 'tut'], 'some_list_field_ids': [5, 6]},
                                      {'id': 2, 'some_related_field_id': [4, 'pouet'], 'some_list_field_ids': [6, 7]}],
                                     [{'id': 3}, {'id': 4}],
