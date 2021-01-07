@@ -456,6 +456,28 @@ SomeModel {
         with pytest.raises(Exception):
             basic_instance.save()
 
+    def test_save_reset_initial_values(self, spy_execute: MagicMock, basic_instance: SomeModel):
+        initial_value = basic_instance.some_field
+
+        basic_instance.some_field = 'tutturu'
+        basic_instance.save()
+
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_field': 'tutturu',
+        })
+        spy_execute.reset_mock()
+
+        basic_instance.save()
+
+        spy_execute.assert_not_called()
+
+        basic_instance.some_field = initial_value
+        basic_instance.save()
+
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_field': initial_value,
+        })
+
     def test_form_odoo_(self, basic_instance: SomeModel):
         basic_instance2 = SomeModel(id=1, some_field='tut', some_related_field=ModelBase(id=2),
                                     some_list_field=[ModelBase(id=3), ModelBase(id=4)], some_named_field='pouet')

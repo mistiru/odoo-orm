@@ -66,6 +66,9 @@ class Field(Generic[T]):
     def has_changed(self, instance: MB) -> bool:
         return getattr(instance, self.value_field_name) != getattr(instance, self.initial_value_field_name)
 
+    def set_unchanged(self, instance: MB) -> None:
+        setattr(instance, self.initial_value_field_name, getattr(instance, self.value_field_name))
+
     def smart_set(self, instance: MB, values: dict[str, Optional[T]], *, initial=False) -> None:
         value = values.get(self.assignable_field_name)
         setattr(instance, self.value_field_name, value)
@@ -542,6 +545,8 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
                 continue
 
             values.update(field.deconstruct(value))
+
+            field.set_unchanged(self)
 
         if 'id' in values:
             raise Exception('Instance creation and id update are not supported yet')
