@@ -523,6 +523,15 @@ SomeModel {
                                     some_list_field=[ModelBase(id=3), ModelBase(id=4)], some_named_field='pouet')
         assert basic_instance == basic_instance2
 
+    def test_save_turns_none_into_false(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(id=1, some_null_field='Pouet')
+        assert instance.some_null_field is not None
+        instance.some_null_field = None
+        instance.save()
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_null_field': False,
+        })
+
 
 class TestModel:
 

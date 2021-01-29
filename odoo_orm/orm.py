@@ -90,7 +90,7 @@ class Field(Generic[T]):
 
         return value
 
-    def deconstruct(self, value: T) -> dict:
+    def deconstruct(self, value: Optional[T]) -> dict:
         raise NotImplementedError
 
 
@@ -123,8 +123,9 @@ class SimpleField(Generic[T], Field[T]):
     def to_odoo(self, value: T) -> Any:
         return value
 
-    def deconstruct(self, value: T) -> dict:
-        return {self.odoo_field_name: self.to_odoo(value)}
+    def deconstruct(self, value: Optional[T]) -> dict:
+        odoo_val = False if value is None else self.to_odoo(value)
+        return {self.odoo_field_name: odoo_val}
 
 
 class IntegerField(SimpleField[int]):
