@@ -417,12 +417,18 @@ class QuerySet(Generic[MB]):
 
             if isinstance(field, ModelField):
                 all_ids = set(getattr(instance, field.value_field_name) for instance in self)
+
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
+                archived_related = related.filter(archived=True)
+
                 for instance in self:
-                    setattr(instance, field_name,
-                            next(r for r in related if r.id == getattr(instance, field.value_field_name)))
+                    r_id = getattr(instance, field.value_field_name)
+                    rel = next((r for r in related if r.id == r_id), None)
+                    if rel is None:
+                        rel = next(r for r in archived_related if r.id == r_id)
+                    setattr(instance, field_name, rel)
             elif isinstance(field, ModelListField):
                 all_ids = set()
                 for instance in self:
@@ -431,10 +437,14 @@ class QuerySet(Generic[MB]):
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
+                archived_related = related.filter(archived=True)
 
                 for instance in self:
-                    selection = [r for r in related if r.id in getattr(instance, field.value_field_name)]
-                    getattr(instance, field_name).cache = selection
+                    r_ids = getattr(instance, field.value_field_name)
+                    rels = [r for r in related if r.id in r_ids]
+                    if len(r_ids) != len(rels):
+                        rels += [r for r in archived_related if r.id in r_ids]
+                    getattr(instance, field_name).cache = rels
             else:
                 raise ValueError('Only support prefetch on RelatedFields')
 

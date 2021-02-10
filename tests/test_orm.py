@@ -372,6 +372,49 @@ class TestQuerySet:
         assert instances[1].some_list_field[1].id == 7
         spy_execute.assert_not_called()
 
+    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'tut']}],
+                                    [],
+                                    [{'id': 2}])
+    def test_prefetch_supports_archived_models_1(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel).prefetch('some_related_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [2])], fields=list(ModelBase.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [2]), ('archived', '=', True)],
+                 fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_related_field.id == 2
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns([{'id': 1, 'some_list_field_ids': [2, 3]}],
+                                    [{'id': 2}],
+                                    [{'id': 3}])
+    def test_prefetch_supports_archived_models_2(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel).prefetch('some_list_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [2, 3])], fields=list(ModelBase.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [2, 3]), ('archived', '=', True)],
+                 fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_list_field[0].id == 2
+        assert instances[0].some_list_field[1].id == 3
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'tut']}],
+                                    [{'id': 2}])
+    def test_prefetch_supports_archived_models_3(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel).prefetch('some_related_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [2])], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_related_field.id == 2
+        spy_execute.assert_not_called()
+
     def test_equality(self):
         assert QuerySet(SomeModel) == QuerySet(SomeModel)
         assert QuerySet(SomeModel) != [SomeModel(id=1)]
