@@ -421,7 +421,7 @@ class QuerySet(Generic[MB]):
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
-                archived_related = related.filter(archived=True)
+                archived_related = related.filter(active=False)
 
                 for instance in self:
                     r_id = getattr(instance, field.value_field_name)
@@ -437,7 +437,7 @@ class QuerySet(Generic[MB]):
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
-                archived_related = related.filter(archived=True)
+                archived_related = related.filter(active=False)
 
                 for instance in self:
                     r_ids = getattr(instance, field.value_field_name)
