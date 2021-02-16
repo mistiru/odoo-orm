@@ -380,7 +380,7 @@ class TestQuerySet:
         assert spy_execute.call_args_list == [
             call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
             call('model.base', 'search_read', [('id', 'in', [2])], fields=list(ModelBase.all_fields_odoo_names())),
-            call('model.base', 'search_read', [('id', 'in', [2]), ('archived', '=', True)],
+            call('model.base', 'search_read', [('id', 'in', [2]), ('active', '=', False)],
                  fields=list(ModelBase.all_fields_odoo_names())),
         ]
         spy_execute.reset_mock()
@@ -395,7 +395,7 @@ class TestQuerySet:
         assert spy_execute.call_args_list == [
             call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
             call('model.base', 'search_read', [('id', 'in', [2, 3])], fields=list(ModelBase.all_fields_odoo_names())),
-            call('model.base', 'search_read', [('id', 'in', [2, 3]), ('archived', '=', True)],
+            call('model.base', 'search_read', [('id', 'in', [2, 3]), ('active', '=', False)],
                  fields=list(ModelBase.all_fields_odoo_names())),
         ]
         spy_execute.reset_mock()
