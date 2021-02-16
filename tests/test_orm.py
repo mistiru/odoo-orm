@@ -33,6 +33,7 @@ class SomeModel(ModelBase['SomeModel']):
     some_date_field = DateField(date_format='%Y, %m-%d')
     some_chain_field = ModelField(model='self')
     some_chain_list_field = ModelListField(model='self')
+    some_nullable_related_field = ModelField(model=ModelBase, null=True)
 
 
 @pytest.fixture
@@ -66,7 +67,8 @@ class TestMetaModel:
                                  ('some_null_field', StringField), ('some_b64_field', B64Field),
                                  ('some_boolean_field', BooleanField), ('some_decimal_field', DecimalField),
                                  ('some_date_field', DateField), ('some_chain_field', ModelField),
-                                 ('some_chain_list_field', ModelListField)):
+                                 ('some_chain_list_field', ModelListField),
+                                 ('some_nullable_related_field', ModelField)):
             assert name in SomeModel.fields
             assert isinstance(SomeModel.fields[name], field_type)
 
@@ -415,6 +417,20 @@ class TestQuerySet:
         assert instances[0].some_related_field.id == 2
         spy_execute.assert_not_called()
 
+    @pytest.mark.connection_returns([{'id': 1, 'some_nullable_related_field_id': False},
+                                     {'id': 2, 'some_nullable_related_field_id': [3, 'tut']}],
+                                    [{'id': 3}])
+    def test_prefetch_ignore_none_values(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel).prefetch('some_nullable_related_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [3])], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_nullable_related_field is None
+        assert instances[1].some_nullable_related_field.id == 3
+        spy_execute.assert_not_called()
+
     def test_equality(self):
         assert QuerySet(SomeModel) == QuerySet(SomeModel)
         assert QuerySet(SomeModel) != [SomeModel(id=1)]
@@ -451,7 +467,8 @@ class TestModelBase:
                                                            'some_list_field_ids', 'named_string', 'some_null_field',
                                                            'some_b64_field', 'some_boolean_field', 'some_decimal_field',
                                                            'some_date_field', 'some_chain_field_id',
-                                                           'some_chain_list_field_ids']
+                                                           'some_chain_list_field_ids',
+                                                           'some_nullable_related_field_id']
 
     def test_field_odoo_names(self):
         assert list(SomeModel.field_odoo_names('some_field')) == ['some_field']

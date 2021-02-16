@@ -416,7 +416,8 @@ class QuerySet(Generic[MB]):
             field = self.model.fields[field_name]
 
             if isinstance(field, ModelField):
-                all_ids = set(getattr(instance, field.value_field_name) for instance in self)
+                all_ids = set(getattr(instance, field.value_field_name) for instance in self
+                              if getattr(instance, field.value_field_name) is not None)
 
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
@@ -425,6 +426,8 @@ class QuerySet(Generic[MB]):
 
                 for instance in self:
                     r_id = getattr(instance, field.value_field_name)
+                    if r_id is None:
+                        continue
                     rel = next((r for r in related if r.id == r_id), None)
                     if rel is None:
                         rel = next(r for r in archived_related if r.id == r_id)
