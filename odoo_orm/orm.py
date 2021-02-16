@@ -586,6 +586,9 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
         if values:
             connection.execute(self.Meta.name, 'write', self.id, values)
 
+    def delete(self) -> None:
+        connection.execute(self.Meta.name, 'unlink', [self.id])
+
 
 class Attachment(ModelBase['Attachment']):
     name = StringField()

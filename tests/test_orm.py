@@ -592,6 +592,10 @@ SomeModel {
             'some_null_field': False,
         })
 
+    def test_delete(self, spy_execute: MagicMock, basic_instance: SomeModel):
+        basic_instance.delete()
+        spy_execute.assert_called_once_with('some.model', 'unlink', [1])
+
 
 class TestModel:
 
