@@ -389,6 +389,16 @@ class QuerySet(Generic[MB]):
 
         return instances[0]
 
+    def delete(self) -> None:
+        self.options['fields'] = ['id']
+
+        res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
+        ids = [r['id'] for r in res]
+
+        res = connection.execute(self.model.Meta.name, 'unlink', ids)
+        if res is not True:
+            raise Exception(res)
+
     def prefetch(self, *field_names: str) -> 'QuerySet[MB]':
         if self.cache is None:
             self.prefetches |= set(field_names)

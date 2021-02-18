@@ -438,6 +438,24 @@ class TestQuerySet:
                 == QuerySet(SomeModel).filter(id=3).filter(name='tut').limit(3))
         assert QuerySet(SomeModel).filter(id=3).filter(name='tut') != QuerySet(SomeModel).filter(name='tut', id=3)
 
+    @pytest.mark.connection_returns([{'id': 1}, {'id': 2}, {'id': 3}],
+                                    True)
+    def test_delete(self, spy_execute: MagicMock):
+        QuerySet(SomeModel).delete()
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=['id']),
+            call('some.model', 'unlink', [1, 2, 3])
+        ]
+
+    @pytest.mark.connection_returns([{'id': 1}, {'id': 2}],
+                                    True)
+    def test_delete_respects_filters(self, spy_execute: MagicMock):
+        QuerySet(SomeModel).filter(some_field='pouet').delete()
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [('some_field', '=', 'pouet')], fields=['id']),
+            call('some.model', 'unlink', [1, 2])
+        ]
+
 
 class TestManager:
 
