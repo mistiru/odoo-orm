@@ -51,7 +51,7 @@ class OdooConnection:
         if not hasattr(self, 'models'):
             raise OdooConnectionNotConnected('You must connect before doing any request')
 
-        if not self.safe and action not in ('search', 'search_read', 'read'):
+        if not self.safe and action not in ('search', 'search_read', 'read', 'read_group'):
             raise UnsafeOperationNotAllowed('Trying to perform an unsafe operation in unsafe environment')
 
         with self.models:
