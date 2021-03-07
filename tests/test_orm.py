@@ -30,7 +30,7 @@ class SomeModel(ModelBase['SomeModel']):
     some_b64_field = B64Field()
     some_boolean_field = BooleanField()
     some_decimal_field = DecimalField()
-    some_date_field = DateField(date_format='%Y, %m-%d')
+    some_date_field = DateField()
     some_chain_field = ModelField(model='self')
     some_chain_list_field = ModelListField(model='self')
     some_nullable_related_field = ModelField(model=ModelBase, null=True)
@@ -123,7 +123,7 @@ class TestField:
             assert str(instance.some_decimal_field) == string
 
     def test_date_field(self):
-        date_str = '2020, 12-17'
+        date_str = '2020-12-17'
         instance = SomeModel.from_odoo(some_date_field=date_str)
         assert instance.some_date_field == date(2020, 12, 17)
         assert (instance.fields['some_date_field']

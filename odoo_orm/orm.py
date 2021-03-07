@@ -171,19 +171,16 @@ class DecimalField(SimpleField[Decimal]):
 
 
 class DateField(SimpleField[date]):
-
-    def __init__(self, odoo_field_name: str = None, /, *, date_format: str, null=False) -> None:
-        super().__init__(odoo_field_name, null=null)
-        self.format = date_format
+    date_format = '%Y-%m-%d'
 
     def __get__(self, instance: MB, owner: Type[MB]) -> Optional[date]:
         return super().__get__(instance, owner)
 
     def to_python(self, value: Any) -> date:
-        return datetime.strptime(value, self.format).date()
+        return datetime.strptime(value, self.date_format).date()
 
     def to_odoo(self, value: date) -> Any:
-        return date.strftime(value, self.format)
+        return date.strftime(value, self.date_format)
 
 
 class RelatedField(Generic[Rel, T], SimpleField[T]):
