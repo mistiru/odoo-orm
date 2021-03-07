@@ -414,7 +414,7 @@ class QuerySet(Generic[MB]):
             bases.append(base)
         # FIXME <end_of_guard>
 
-        for field_name in field_names:
+        for field_name in sorted(field_names):
             if '__' in field_name:
                 field_name, following = field_name.split('__', maxsplit=1)
             else:

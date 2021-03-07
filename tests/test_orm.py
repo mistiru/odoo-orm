@@ -355,15 +355,15 @@ class TestQuerySet:
 
     @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [3, 'tut'], 'some_list_field_ids': [5, 6]},
                                      {'id': 2, 'some_related_field_id': [4, 'pouet'], 'some_list_field_ids': [6, 7]}],
-                                    [{'id': 3}, {'id': 4}],
-                                    [{'id': 5}, {'id': 6}, {'id': 7}])
+                                    [{'id': 5}, {'id': 6}, {'id': 7}],
+                                    [{'id': 3}, {'id': 4}])
     def test_prefetch_multiple_fields(self, spy_execute: MagicMock):
         instances = list(QuerySet(SomeModel).prefetch('some_related_field', 'some_list_field'))
         assert spy_execute.call_args_list == [
             call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
-            call('model.base', 'search_read', [('id', 'in', [3, 4])], fields=list(ModelBase.all_fields_odoo_names())),
             call('model.base', 'search_read', [('id', 'in', [5, 6, 7])],
                  fields=list(ModelBase.all_fields_odoo_names())),
+            call('model.base', 'search_read', [('id', 'in', [3, 4])], fields=list(ModelBase.all_fields_odoo_names())),
         ]
         spy_execute.reset_mock()
         assert instances[0].some_related_field.id == 3
