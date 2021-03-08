@@ -183,6 +183,19 @@ class DateField(SimpleField[date]):
         return date.strftime(value, self.date_format)
 
 
+class DatetimeField(SimpleField[datetime]):
+    datetime_format = '%Y-%m-%d %H:%M:%S'
+
+    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[datetime]:
+        return super().__get__(instance, owner)
+
+    def to_python(self, value: Any) -> datetime:
+        return datetime.strptime(value, self.datetime_format)
+
+    def to_odoo(self, value: datetime) -> Any:
+        return date.strftime(value, self.datetime_format)
+
+
 class RelatedField(Generic[Rel, T], SimpleField[T]):
 
     def __init__(self, odoo_field_name: str = None, /, *, model: Type[Rel], null=False) -> None:

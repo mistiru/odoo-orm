@@ -1,13 +1,15 @@
 from base64 import b64encode
-from datetime import date
+from datetime import date, datetime
 from operator import attrgetter
 from unittest.mock import call, MagicMock
 
 import pytest
 
 from odoo_orm.errors import MissingField
-from odoo_orm.orm import (Attachment, B64Field, BooleanField, c2s, DateField, DecimalField, IntegerField, Manager,
-                          Model, ModelBase, ModelField, ModelListField, QuerySet, StringField)
+from odoo_orm.orm import (
+    Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, Manager,
+    Model, ModelBase, ModelField, ModelListField, QuerySet, StringField,
+)
 
 
 def test_camel_to_snake_case():
@@ -34,6 +36,7 @@ class SomeModel(ModelBase['SomeModel']):
     some_chain_field = ModelField(model='self')
     some_chain_list_field = ModelListField(model='self')
     some_nullable_related_field = ModelField(model=ModelBase, null=True)
+    some_datetime_field = DatetimeField()
 
 
 @pytest.fixture
@@ -67,8 +70,8 @@ class TestMetaModel:
                                  ('some_null_field', StringField), ('some_b64_field', B64Field),
                                  ('some_boolean_field', BooleanField), ('some_decimal_field', DecimalField),
                                  ('some_date_field', DateField), ('some_chain_field', ModelField),
-                                 ('some_chain_list_field', ModelListField),
-                                 ('some_nullable_related_field', ModelField)):
+                                 ('some_chain_list_field', ModelListField), ('some_nullable_related_field', ModelField),
+                                 ('some_datetime_field', DatetimeField)):
             assert name in SomeModel.fields
             assert isinstance(SomeModel.fields[name], field_type)
 
@@ -128,6 +131,13 @@ class TestField:
         assert instance.some_date_field == date(2020, 12, 17)
         assert (instance.fields['some_date_field']
                 .deconstruct(instance.some_date_field)) == {'some_date_field': date_str}
+
+    def test_datetime_field(self):
+        datetime_str = '2020-12-17 14:37:35'
+        instance = SomeModel.from_odoo(some_datetime_field=datetime_str)
+        assert instance.some_datetime_field == datetime(2020, 12, 17, 14, 37, 35)
+        assert (instance.fields['some_datetime_field']
+                .deconstruct(instance.some_datetime_field)) == {'some_datetime_field': datetime_str}
 
     @pytest.mark.connection_returns([{'id': 2}])
     def test_model_field_get_from_id(self, spy_execute: MagicMock):
@@ -495,7 +505,7 @@ class TestModelBase:
                                                            'some_b64_field', 'some_boolean_field', 'some_decimal_field',
                                                            'some_date_field', 'some_chain_field_id',
                                                            'some_chain_list_field_ids',
-                                                           'some_nullable_related_field_id']
+                                                           'some_nullable_related_field_id', 'some_datetime_field']
 
     def test_field_odoo_names(self):
         assert list(SomeModel.field_odoo_names('some_field')) == ['some_field']
