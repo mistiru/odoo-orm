@@ -357,6 +357,9 @@ class QuerySet(Generic[MB]):
                     new.filters.append((field, operation, value))
             elif kw == 'values':
                 new.options['fields'] = list(name for field in val for name in self.model.field_odoo_names(field))
+            elif kw == 'order_by':
+                new.options['order'] = ', '.join(field.lstrip('-') + (' desc' if field.startswith('-') else ' asc')
+                                                 for field in val)
             else:
                 raise Exception(f'Argument not recognized {kw}')
 
@@ -370,6 +373,9 @@ class QuerySet(Generic[MB]):
 
     def limit(self, number: int) -> 'QuerySet[MB]':
         return self._enhance(limit=number)
+
+    def order_by(self, *fields: str) -> 'QuerySet[MB]':
+        return self._enhance(order_by=fields)
 
     def get(self, **kwargs) -> MB:
         if kwargs:
@@ -475,6 +481,9 @@ class Manager(Generic[MB]):
 
     def limit(self, number: int) -> QuerySet[MB]:
         return self.queryset.limit(number)
+
+    def order_by(self, *fields: str) -> QuerySet[MB]:
+        return self.queryset.order_by(*fields)
 
     def get(self, **kwargs) -> MB:
         return self.queryset.get(**kwargs)

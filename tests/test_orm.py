@@ -237,6 +237,12 @@ class TestQuerySet:
         spy_execute.assert_called_once_with('some.model', 'search_read', [], limit=7,
                                             fields=list(SomeModel.all_fields_odoo_names()))
 
+    @pytest.mark.connection_returns([])
+    def test_order_by(self, spy_execute: MagicMock):
+        len(QuerySet(SomeModel).order_by('id', '-some_named_field'))
+        spy_execute.assert_called_once_with('some.model', 'search_read', [], order='id asc, some_named_field desc',
+                                            fields=list(SomeModel.all_fields_odoo_names()))
+
     @pytest.mark.connection_returns([{'id': 1}])
     def test_get(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel).filter(id=1)
@@ -470,6 +476,9 @@ class TestManager:
 
     def test_limit(self):
         assert SomeModel.objects.limit(3) == QuerySet(SomeModel).limit(3)
+
+    def test_order_by(self):
+        assert SomeModel.objects.order_by('some_field') == QuerySet(SomeModel).order_by('some_field')
 
     @pytest.mark.connection_returns([{'id': 1}])
     def test_get(self, spy_execute: MagicMock):
