@@ -337,7 +337,15 @@ class QuerySet(Generic[MB]):
         if 'fields' not in self.options:
             self.options['fields'] = list(self.model.all_fields_odoo_names())
 
-        res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
+        if len(self.filters) == 1 and self.filters[0][0] == 'id' and self.filters[0][1] in ('=', 'in'):
+            if self.filters[0][1] == '=':
+                res = connection.execute(self.model.Meta.name, 'read', [self.filters[0][2]], **self.options)
+            elif self.filters[0][1] == 'in':
+                res = connection.execute(self.model.Meta.name, 'read', self.filters[0][2], **self.options)
+            else:
+                raise Exception('Wut?')
+        else:
+            res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
 
         self.cache = [self.model.from_odoo(**data) for data in res]
 
@@ -448,15 +456,12 @@ class QuerySet(Generic[MB]):
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
-                archived_related = related.filter(active=False)
 
                 for instance in self:
                     r_id = getattr(instance, field.value_field_name)
                     if r_id is None:
                         continue
-                    rel = next((r for r in related if r.id == r_id), None)
-                    if rel is None:
-                        rel = next(r for r in archived_related if r.id == r_id)
+                    rel = next(r for r in related if r.id == r_id)
                     setattr(instance, field_name, rel)
             elif isinstance(field, ModelListField):
                 all_ids = set()
@@ -466,13 +471,10 @@ class QuerySet(Generic[MB]):
                 related = field.related_model.objects.filter(id__in=list(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
-                archived_related = related.filter(active=False)
 
                 for instance in self:
                     r_ids = getattr(instance, field.value_field_name)
                     rels = [r for r in related if r.id in r_ids]
-                    if len(r_ids) != len(rels):
-                        rels += [r for r in archived_related if r.id in r_ids]
                     getattr(instance, field_name).cache = rels
             else:
                 raise ValueError('Only support prefetch on RelatedFields')
