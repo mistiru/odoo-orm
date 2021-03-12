@@ -1,3 +1,4 @@
+from _zoneinfo import ZoneInfo
 from base64 import b64encode
 from datetime import date, datetime
 from operator import attrgetter
@@ -135,7 +136,7 @@ class TestField:
     def test_datetime_field(self):
         datetime_str = '2020-12-17 14:37:35'
         instance = SomeModel.from_odoo(some_datetime_field=datetime_str)
-        assert instance.some_datetime_field == datetime(2020, 12, 17, 14, 37, 35)
+        assert instance.some_datetime_field == datetime(2020, 12, 17, 14, 37, 35, tzinfo=ZoneInfo('UTC'))
         assert (instance.fields['some_datetime_field']
                 .deconstruct(instance.some_datetime_field)) == {'some_datetime_field': datetime_str}
 

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from functools import cached_property
 from typing import Any, Generic, Iterable, Optional, Type, TypeVar
+from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
 from odoo_orm.errors import MissingField
@@ -190,10 +191,10 @@ class DatetimeField(SimpleField[datetime]):
         return super().__get__(instance, owner)
 
     def to_python(self, value: Any) -> datetime:
-        return datetime.strptime(value, self.datetime_format)
+        return datetime.strptime(value, self.datetime_format).replace(tzinfo=ZoneInfo('UTC'))
 
     def to_odoo(self, value: datetime) -> Any:
-        return date.strftime(value, self.datetime_format)
+        return datetime.strftime(value.astimezone(ZoneInfo('UTC')), self.datetime_format)
 
 
 class RelatedField(Generic[Rel, T], SimpleField[T]):
