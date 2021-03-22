@@ -504,6 +504,9 @@ class Manager(Generic[MB]):
     def get(self, **kwargs) -> MB:
         return self.queryset.get(**kwargs)
 
+    def prefetch(self, *field_names: str) -> QuerySet[MB]:
+        return self.queryset.prefetch(*field_names)
+
 
 class MetaModel(type):
 
