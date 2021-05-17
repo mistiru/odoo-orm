@@ -358,6 +358,7 @@ class QuerySet(Generic[MB]):
         new = QuerySet(self.model)
         new.filters = self.filters.copy()
         new.options = self.options.copy()
+        new.prefetches = self.prefetches.copy()
 
         for kw, val in kwargs.items():
             if kw == 'limit':
