@@ -7,7 +7,7 @@ from typing import Any, Generic, Iterable, Optional, Type, TypeVar
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import MissingField
+from odoo_orm.errors import FieldDoesNotExist, MissingField
 
 connection = OdooConnection.get_connection()
 
@@ -348,7 +348,12 @@ class QuerySet(Generic[MB]):
         else:
             res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
 
-        self.cache = [self.model.from_odoo(**data) for data in res]
+        self.cache = []
+        for data in res:
+            for field in self.options['fields']:
+                if field not in data:
+                    raise FieldDoesNotExist(self.model, field)
+            self.cache.append(self.model.from_odoo(**data))
 
         self._prefetch(*list(self.prefetches))
 

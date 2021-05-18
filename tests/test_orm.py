@@ -6,7 +6,7 @@ from unittest.mock import call, MagicMock
 
 import pytest
 
-from odoo_orm.errors import MissingField
+from odoo_orm.errors import FieldDoesNotExist, MissingField
 from odoo_orm.orm import (
     Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, Manager,
     Model, ModelBase, ModelField, ModelListField, QuerySet, StringField,
@@ -239,6 +239,27 @@ class TestQuerySet:
 
         with pytest.raises(KeyError):
             len(QuerySet(SomeModel).values('id', 'pouet'))
+
+    @pytest.mark.connection_returns([{}])
+    def test_fail_on_missing_value(self, spy_execute: MagicMock):
+        with pytest.raises(FieldDoesNotExist):
+            len(QuerySet(SomeModel))
+        spy_execute.assert_called_once_with('some.model', 'search_read', [],
+                                            fields=list(SomeModel.all_fields_odoo_names()))
+
+    @pytest.mark.connection_returns([{'id': 1, 'some_field': 'pop'}],
+                                    [{'id': 2}])
+    def test_fail_on_missing_values_respects_values(self, spy_execute: MagicMock):
+        len(QuerySet(SomeModel).values('some_field'))
+        spy_execute.assert_called_once_with('some.model', 'search_read', [],
+                                            fields=['some_field'])
+
+        spy_execute.reset_mock()
+
+        with pytest.raises(FieldDoesNotExist):
+            len(QuerySet(SomeModel).values('some_field'))
+        spy_execute.assert_called_once_with('some.model', 'search_read', [],
+                                            fields=['some_field'])
 
     @pytest.mark.connection_returns([])
     def test_limit(self, spy_execute: MagicMock):

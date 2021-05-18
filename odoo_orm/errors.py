@@ -20,3 +20,7 @@ class OdooORMError(Exception):
 
 class MissingField(OdooORMError):
     pass
+
+
+class FieldDoesNotExist(OdooORMError):
+    pass
