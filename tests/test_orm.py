@@ -39,6 +39,31 @@ class SomeModel(ModelBase['SomeModel']):
     some_nullable_related_field = ModelField(model=ModelBase, null=True)
     some_datetime_field = DatetimeField()
 
+    ODOO_DEFAULT_VALUES_DICT = {
+        'some_field': '',
+        'some_related_field_id': [999999, ''],
+        'some_list_field_ids': [],
+        'named_string': '',
+        'some_null_field': False,
+        'some_b64_field': '',
+        'some_boolean_field': False,
+        'some_decimal_field': 0.0,
+        'some_date_field': datetime.strftime(datetime(1999, 1, 1), DateField.date_format),
+        'some_chain_field_id': [9999999, ''],
+        'some_chain_list_field_ids': [],
+        'some_nullable_related_field_id': False,
+        'some_datetime_field': datetime.strftime(datetime(1999, 1, 1), DatetimeField.datetime_format),
+    }
+
+    @staticmethod
+    def populate_odoo_return_values(*odoo_return_values_list: list[dict]) -> tuple[list[dict]]:
+        for odoo_return_values in odoo_return_values_list:
+            for odoo_return_value in odoo_return_values:
+                for field, default_value in SomeModel.ODOO_DEFAULT_VALUES_DICT.items():
+                    odoo_return_value.setdefault(field, default_value)
+
+        return odoo_return_values_list
+
 
 @pytest.fixture
 def basic_instance():
@@ -146,7 +171,7 @@ class TestField:
         assert instance.some_related_field.id == 2
         spy_execute.assert_called_once_with('model.base', 'read', [2], fields=['id'])
 
-    @pytest.mark.connection_returns([{'id': 2}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 2}]))
     def test_chain_field(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_chain_field_id=[2, 'pouet'])
         assert instance.some_chain_field.id == 2
@@ -158,7 +183,7 @@ class TestField:
         assert list(map(attrgetter('id'), instance.some_list_field)) == [3, 4]
         spy_execute.assert_called_once_with('model.base', 'read', [3, 4], fields=['id'])
 
-    @pytest.mark.connection_returns([{'id': 3}, {'id': 4}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 3}, {'id': 4}]))
     def test_chain_list_field(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_chain_list_field_ids=[3, 4])
         assert list(map(attrgetter('id'), instance.some_chain_list_field)) == [3, 4]
@@ -168,21 +193,21 @@ class TestField:
 
 class TestQuerySet:
 
-    @pytest.mark.connection_returns([{'id': 42}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 42}]))
     def test_can_iter(self, spy_execute: MagicMock):
         [instance] = list(QuerySet(SomeModel))
         spy_execute.assert_called_once_with('some.model', 'search_read', [],
                                             fields=list(SomeModel.all_fields_odoo_names()))
         assert instance.id == 42
 
-    @pytest.mark.connection_returns([{'id': 42}, {'id': 69}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 42}, {'id': 69}]))
     def test_can_get_item(self, spy_execute: MagicMock):
         instance = QuerySet(SomeModel)[1]
         spy_execute.assert_called_once_with('some.model', 'search_read', [],
                                             fields=list(SomeModel.all_fields_odoo_names()))
         assert instance.id == 69
 
-    @pytest.mark.connection_returns([{'id': 42}, {'id': 69}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 42}, {'id': 69}]))
     def test_can_get_length(self, spy_execute: MagicMock):
         length = len(QuerySet(SomeModel))
         spy_execute.assert_called_once_with('some.model', 'search_read', [],
@@ -191,7 +216,7 @@ class TestQuerySet:
 
     @pytest.mark.connection_returns([{'id': 1}])
     def test_has_cache(self, spy_execute: MagicMock):
-        queryset = QuerySet(SomeModel)
+        queryset = QuerySet(SomeModel).values()
         spy_execute.assert_not_called()
         assert len(queryset) == 1
         assert len(queryset) == 1
@@ -273,13 +298,13 @@ class TestQuerySet:
         spy_execute.assert_called_once_with('some.model', 'search_read', [], order='id asc, some_named_field desc',
                                             fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 1}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 1}]))
     def test_get(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel).filter(id=1)
         assert queryset.get().id == 1
         spy_execute.assert_called_once_with('some.model', 'read', [1], fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 1}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 1}]))
     def test_get_accepts_arguments(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel)
         assert queryset.get(id=1).id == 1
@@ -292,7 +317,7 @@ class TestQuerySet:
             queryset.get(id=0)
         spy_execute.assert_called_once_with('some.model', 'read', [0], fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 1}, {'id': 2}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 1}, {'id': 2}]))
     def test_get_multiple(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel)
         with pytest.raises(SomeModel.MultipleObjectsReturned):
@@ -300,10 +325,11 @@ class TestQuerySet:
         spy_execute.assert_called_once_with('some.model', 'search_read', [('id', '<=', 2)],
                                             fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'tut']},
-                                     {'id': 2, 'some_related_field_id': [2, 'tut']},
-                                     {'id': 3, 'some_related_field_id': [4, 'pouet']}],
-                                    [{'id': 2}, {'id': 4}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_related_field_id': [2, 'tut']},
+                                                {'id': 2, 'some_related_field_id': [2, 'tut']},
+                                                {'id': 3, 'some_related_field_id': [4, 'pouet']}],
+                                               [{'id': 2}, {'id': 4}]))
     def test_prefetch(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel).prefetch('some_related_field')
         spy_execute.assert_not_called()
@@ -318,10 +344,11 @@ class TestQuerySet:
         assert instances[2].some_related_field.id == 4
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'tut']},
-                                     {'id': 2, 'some_related_field_id': [2, 'tut']},
-                                     {'id': 3, 'some_related_field_id': [4, 'pouet']}],
-                                    [{'id': 2}, {'id': 4}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_related_field_id': [2, 'tat']},
+                                                {'id': 2, 'some_related_field_id': [2, 'tat']},
+                                                {'id': 3, 'some_related_field_id': [4, 'pouet']}],
+                                               [{'id': 2}, {'id': 4}]))
     def test_prefetch_cached_queryset(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel)
         instances = list(queryset)
@@ -338,7 +365,7 @@ class TestQuerySet:
         assert instances[2].some_related_field.id == 4
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1}, {'id': 2}])
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 1}, {'id': 2}]))
     def test_prefetch_requires_real_field(self, spy_execute: MagicMock):
         with pytest.raises(KeyError):
             list(QuerySet(SomeModel).prefetch('tut'))
@@ -348,10 +375,11 @@ class TestQuerySet:
         list(QuerySet(SomeModel).prefetch('some_related_field'))
         spy_execute.assert_called_once()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_list_field_ids': [2, 3]},
-                                     {'id': 2, 'some_list_field_ids': [2]},
-                                     {'id': 3, 'some_list_field_ids': [4]}],
-                                    [{'id': 2}, {'id': 3}, {'id': 4}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_list_field_ids': [2, 3]},
+                                                {'id': 2, 'some_list_field_ids': [2]},
+                                                {'id': 3, 'some_list_field_ids': [4]}],
+                                               [{'id': 2}, {'id': 3}, {'id': 4}]))
     def test_prefetch_on_model_list(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel).prefetch('some_list_field')
         spy_execute.assert_not_called()
@@ -366,11 +394,12 @@ class TestQuerySet:
         assert instances[2].some_list_field.cache == [ModelBase(id=4)]
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_chain_field_id': [3, 'tut']},
-                                     {'id': 2, 'some_chain_field_id': [4, 'pouet']}],
-                                    [{'id': 3, 'some_related_field_id': [5, 'bidule']},
-                                     {'id': 4, 'some_related_field_id': [5, 'bidule']}],
-                                    [{'id': 5}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_chain_field_id': [3, 'tut']},
+                                                {'id': 2, 'some_chain_field_id': [4, 'pouet']}],
+                                               [{'id': 3, 'some_related_field_id': [5, 'bidule']},
+                                                {'id': 4, 'some_related_field_id': [5, 'bidule']}],
+                                               [{'id': 5}]))
     def test_prefetch_follows_related_fields(self, spy_execute: MagicMock):
         instances = list(QuerySet(SomeModel).prefetch('some_chain_field__some_related_field'))
         assert spy_execute.call_args_list == [
@@ -385,10 +414,12 @@ class TestQuerySet:
         assert instances[1].some_chain_field.some_related_field.id == 5
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [3, 'tut'], 'some_list_field_ids': [5, 6]},
-                                     {'id': 2, 'some_related_field_id': [4, 'pouet'], 'some_list_field_ids': [6, 7]}],
-                                    [{'id': 5}, {'id': 6}, {'id': 7}],
-                                    [{'id': 3}, {'id': 4}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_related_field_id': [3, 'tut'], 'some_list_field_ids': [5, 6]},
+             {'id': 2, 'some_related_field_id': [4, 'pouet'], 'some_list_field_ids': [6, 7]}],
+            [{'id': 5}, {'id': 6}, {'id': 7}],
+            [{'id': 3}, {'id': 4}]))
     def test_prefetch_multiple_fields(self, spy_execute: MagicMock):
         instances = list(QuerySet(SomeModel).prefetch('some_related_field', 'some_list_field'))
         assert spy_execute.call_args_list == [
@@ -405,9 +436,10 @@ class TestQuerySet:
         assert instances[1].some_list_field[1].id == 7
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_nullable_related_field_id': False},
-                                     {'id': 2, 'some_nullable_related_field_id': [3, 'tut']}],
-                                    [{'id': 3}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_nullable_related_field_id': False},
+                                                {'id': 2, 'some_nullable_related_field_id': [3, 'tut']}],
+                                               [{'id': 3}]))
     def test_prefetch_ignore_none_values(self, spy_execute: MagicMock):
         instances = list(QuerySet(SomeModel).prefetch('some_nullable_related_field'))
         assert spy_execute.call_args_list == [
@@ -419,8 +451,9 @@ class TestQuerySet:
         assert instances[1].some_nullable_related_field.id == 3
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'pouet']}],
-                                    [{'id': 2}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_related_field_id': [2, 'pouet']}],
+                                               [{'id': 2}]))
     def test_prefetch_not_last_operation_1(self, spy_execute: MagicMock):
         instance = QuerySet(SomeModel).prefetch('some_related_field').get()
         assert spy_execute.call_args_list == [
@@ -431,8 +464,9 @@ class TestQuerySet:
         assert instance.some_related_field.id == 2
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_related_field_id': [2, 'prout']}],
-                                    [{'id': 2}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_related_field_id': [2, 'prout']}],
+                                               [{'id': 2}]))
     def test_prefetch_not_last_operation_2(self, spy_execute: MagicMock):
         instance = QuerySet(SomeModel).prefetch('some_related_field').get(some_field='pouet')
         assert spy_execute.call_args_list == [
@@ -444,9 +478,10 @@ class TestQuerySet:
         assert instance.some_related_field.id == 2
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_list_field_ids': [3, 4]},
-                                     {'id': 2, 'some_list_field_ids': [4, 5]}],
-                                    [{'id': 3}, {'id': 4}, {'id': 5}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_list_field_ids': [3, 4]},
+                                                {'id': 2, 'some_list_field_ids': [4, 5]}],
+                                               [{'id': 3}, {'id': 4}, {'id': 5}]))
     def test_prefetch_not_last_operation_3(self, spy_execute: MagicMock):
         instances = list(QuerySet(SomeModel).prefetch('some_list_field').filter(some_field='pouet'))
         assert spy_execute.call_args_list == [
@@ -461,9 +496,10 @@ class TestQuerySet:
         assert instances[1].some_list_field[1].id == 5
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_chain_field_id': [2, 'tet']}],
-                                    [{'id': 2, 'some_chain_field_id': [3, 'tat']}],
-                                    [{'id': 3}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 1, 'some_chain_field_id': [2, 'tet']}],
+                                               [{'id': 2, 'some_chain_field_id': [3, 'tat']}],
+                                               [{'id': 3}]))
     def test_prefetch_recursive(self, spy_execute: MagicMock):
         instance = QuerySet(SomeModel).prefetch('some_chain_field__some_chain_field').get()
         assert spy_execute.call_args_list == [
@@ -476,14 +512,17 @@ class TestQuerySet:
         assert instance.some_chain_field.some_chain_field.id == 3
         spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_chain_field_id': [2, 'tet'], 'some_related_field_id': [3, 'tot']}],
-                                    [{'id': 2}],
-                                    [{'id': 3}])
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [2, 'tet'], 'some_related_field_id': [3, 'tot']}],
+            [{'id': 2}],
+            [{'id': 3}]))
     def test_prefetch_alternate(self, spy_execute: MagicMock):
         instance = (QuerySet(SomeModel).prefetch('some_chain_field').filter(some_field='tyt')
                     .prefetch('some_related_field').get())
         assert spy_execute.call_args_list == [
-            call('some.model', 'search_read', [('some_field', '=', 'tyt')], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'search_read', [('some_field', '=', 'tyt')],
+                 fields=list(SomeModel.all_fields_odoo_names())),
             call('some.model', 'read', [2], fields=list(SomeModel.all_fields_odoo_names())),
             call('model.base', 'read', [3], fields=list(ModelBase.all_fields_odoo_names())),
         ]
@@ -537,8 +576,8 @@ class TestManager:
 
     @pytest.mark.connection_returns([{'id': 1}])
     def test_get(self, spy_execute: MagicMock):
-        assert SomeModel.objects.get(id=1) == SomeModel(id=1)
-        spy_execute.assert_called_once_with('some.model', 'read', [1], fields=list(SomeModel.all_fields_odoo_names()))
+        assert SomeModel.objects.values().get(id=1) == SomeModel(id=1)
+        spy_execute.assert_called_once_with('some.model', 'read', [1], fields=[])
 
 
 class TestModelBase:
@@ -680,10 +719,10 @@ SomeModel {
 
 class TestModel:
 
-    @pytest.mark.connection_returns([{'id': 2}])
+    @pytest.mark.connection_returns([{'id': 2, 'name': '', 'datas': ''}])
     def test_attachments(self, spy_execute: MagicMock):
         instance = Model(id=1)
-        assert list(instance.attachments) == [Attachment(id=2)]
+        assert list(instance.attachments) == [Attachment(id=2, name='', content=b'')]
         spy_execute.assert_called_once_with('ir.attachment', 'search_read',
                                             [('res_model', '=', 'model'), ('res_id', '=', 1)],
                                             fields=['id', 'name', 'datas'])
