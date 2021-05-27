@@ -460,7 +460,7 @@ class QuerySet(Generic[MB]):
                 all_ids = set(getattr(instance, field.value_field_name) for instance in self
                               if getattr(instance, field.value_field_name) is not None)
 
-                related = field.related_model.objects.filter(id__in=list(all_ids))
+                related = field.related_model.objects.filter(id__in=sorted(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
 
@@ -475,7 +475,7 @@ class QuerySet(Generic[MB]):
                 for instance in self:
                     all_ids |= set(getattr(instance, field.value_field_name))
 
-                related = field.related_model.objects.filter(id__in=list(all_ids))
+                related = field.related_model.objects.filter(id__in=sorted(all_ids))
                 if following is not None:
                     related = related.prefetch(following)
 
