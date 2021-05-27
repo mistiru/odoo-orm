@@ -438,22 +438,18 @@ class QuerySet(Generic[MB]):
         return self
 
     def _prefetch(self, *field_names: str) -> None:
-        # FIXME currently, prefetch does not work in this cases : prefetch(a__b, a__c)
-        #       as "a" queryset is performed at each iteration (to bind corresponding related data to instances)
-        bases = []
-        for field_name in field_names:
-            base = field_name.split('__')[0]
-            if base in bases:
-                raise NotImplementedError('This feature is not implemented: prefetch(a__b, a__c)')
-            bases.append(base)
-        # FIXME <end_of_guard>
-
+        # Extract field names related to this prefetch
+        #  merge subsequent ones according to their prefix
+        followings_by_field_name = {}
         for field_name in sorted(field_names):
             if '__' in field_name:
                 field_name, following = field_name.split('__', maxsplit=1)
+                followings_by_field_name.setdefault(field_name, []).append(following)
             else:
-                following = None
+                followings_by_field_name[field_name] = []
 
+        for field_name in followings_by_field_name:
+            followings = followings_by_field_name.get(field_name)
             field = self.model.fields[field_name]
 
             if isinstance(field, ModelField):
@@ -461,8 +457,8 @@ class QuerySet(Generic[MB]):
                               if getattr(instance, field.value_field_name) is not None)
 
                 related = field.related_model.objects.filter(id__in=sorted(all_ids))
-                if following is not None:
-                    related = related.prefetch(following)
+                if followings:
+                    related = related.prefetch(*followings)
 
                 for instance in self:
                     r_id = getattr(instance, field.value_field_name)
@@ -476,8 +472,8 @@ class QuerySet(Generic[MB]):
                     all_ids |= set(getattr(instance, field.value_field_name))
 
                 related = field.related_model.objects.filter(id__in=sorted(all_ids))
-                if following is not None:
-                    related = related.prefetch(following)
+                if followings:
+                    related = related.prefetch(*followings)
 
                 for instance in self:
                     r_ids = getattr(instance, field.value_field_name)

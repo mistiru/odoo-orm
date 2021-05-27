@@ -531,6 +531,223 @@ class TestQuerySet:
         assert instance.some_related_field.id == 3
         spy_execute.assert_not_called()
 
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [3, '']},
+             {'id': 2, 'some_chain_field_id': [4, '']}],
+            [{'id': 3, 'some_related_field_id': [5, ''], 'some_chain_field_id': [6, '']},
+             {'id': 4, 'some_related_field_id': [7, ''], 'some_chain_field_id': [8, '']}],
+            [{'id': 6}, {'id': 8}],
+            [{'id': 5}, {'id': 7}]))
+    def test_multiple_prefetches_same_model_0(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_field__some_related_field',
+                                   'some_chain_field__some_chain_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [6, 8], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [5, 7], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[0].some_chain_field.some_related_field.id == 5
+        assert instances[0].some_chain_field.some_chain_field.id == 6
+        assert instances[1].some_chain_field.id == 4
+        assert instances[1].some_chain_field.some_related_field.id == 7
+        assert instances[1].some_chain_field.some_chain_field.id == 8
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [3, '']},
+             {'id': 2, 'some_chain_field_id': [3, '']}],
+            [{'id': 3, 'some_related_field_id': [4, ''], 'some_chain_field_id': [5, '']}],
+            [{'id': 5}],
+            [{'id': 4}]))
+    def test_multiple_prefetches_same_model_1(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_field__some_related_field',
+                                   'some_chain_field__some_chain_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [5], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [4], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[0].some_chain_field.some_related_field.id == 4
+        assert instances[0].some_chain_field.some_chain_field.id == 5
+        assert instances[1].some_chain_field.id == 3
+        assert instances[1].some_chain_field.some_related_field.id == 4
+        assert instances[1].some_chain_field.some_chain_field.id == 5
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [3, '']},
+             {'id': 2, 'some_chain_field_id': [4, '']}],
+            [{'id': 3, 'some_list_field_ids': [5, 6], 'some_chain_list_field_ids': [7, 8]},
+             {'id': 4, 'some_list_field_ids': [9, 10], 'some_chain_list_field_ids': [11, 12]}],
+            [{'id': 7}, {'id': 8}, {'id': 11}, {'id': 12}],
+            [{'id': 5}, {'id': 6}, {'id': 9}, {'id': 10}]))
+    def test_multiple_prefetches_same_model_2(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_field__some_list_field',
+                                   'some_chain_field__some_chain_list_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [7, 8, 11, 12], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [5, 6, 9, 10], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[0].some_chain_field.some_list_field[0].id == 5
+        assert instances[0].some_chain_field.some_list_field[1].id == 6
+        assert instances[0].some_chain_field.some_chain_list_field[0].id == 7
+        assert instances[0].some_chain_field.some_chain_list_field[1].id == 8
+        assert instances[1].some_chain_field.id == 4
+        assert instances[1].some_chain_field.some_list_field[0].id == 9
+        assert instances[1].some_chain_field.some_list_field[1].id == 10
+        assert instances[1].some_chain_field.some_chain_list_field[0].id == 11
+        assert instances[1].some_chain_field.some_chain_list_field[1].id == 12
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [3, '']},
+             {'id': 2, 'some_chain_field_id': [4, '']}],
+            [{'id': 3, 'some_related_field_id': [5, ''], 'some_list_field_ids': [6, 7]},
+             {'id': 4, 'some_related_field_id': [8, ''], 'some_list_field_ids': [9, 10]}],
+            [{'id': 6}, {'id': 7}, {'id': 9}, {'id': 10}],
+            [{'id': 5}, {'id': 8}]))
+    def test_multiple_prefetches_same_model_3(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_field__some_related_field',
+                                   'some_chain_field__some_list_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [6, 7, 9, 10], fields=list(ModelBase.all_fields_odoo_names())),
+            call('model.base', 'read', [5, 8], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[0].some_chain_field.some_related_field.id == 5
+        assert instances[0].some_chain_field.some_list_field[0].id == 6
+        assert instances[0].some_chain_field.some_list_field[1].id == 7
+        assert instances[1].some_chain_field.id == 4
+        assert instances[1].some_chain_field.some_related_field.id == 8
+        assert instances[1].some_chain_field.some_list_field[0].id == 9
+        assert instances[1].some_chain_field.some_list_field[1].id == 10
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_list_field_ids': [3, 4]},
+             {'id': 2, 'some_chain_list_field_ids': [4, 5]}],
+            [{'id': 3, 'some_related_field_id': [6, ''], 'some_chain_field_id': [7, '']},
+             {'id': 4, 'some_related_field_id': [8, ''], 'some_chain_field_id': [9, '']},
+             {'id': 5, 'some_related_field_id': [10, ''], 'some_chain_field_id': [11, '']}],
+            [{'id': 7}, {'id': 9}, {'id': 11}],
+            [{'id': 6}, {'id': 8}, {'id': 10}]))
+    def test_multiple_prefetches_same_model_4(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_list_field__some_related_field',
+                                   'some_chain_list_field__some_chain_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4, 5], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [7, 9, 11], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [6, 8, 10], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_list_field[0].id == 3
+        assert instances[0].some_chain_list_field[1].id == 4
+        assert instances[0].some_chain_list_field[0].some_related_field.id == 6
+        assert instances[0].some_chain_list_field[0].some_chain_field.id == 7
+        assert instances[0].some_chain_list_field[1].some_related_field.id == 8
+        assert instances[0].some_chain_list_field[1].some_chain_field.id == 9
+        assert instances[1].some_chain_list_field[0].id == 4
+        assert instances[1].some_chain_list_field[1].id == 5
+        assert instances[1].some_chain_list_field[0].some_related_field.id == 8
+        assert instances[1].some_chain_list_field[0].some_chain_field.id == 9
+        assert instances[1].some_chain_list_field[1].some_related_field.id == 10
+        assert instances[1].some_chain_list_field[1].some_chain_field.id == 11
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_list_field_ids': [3, 4]},
+             {'id': 2, 'some_chain_list_field_ids': [4, 5]}],
+            [{'id': 3, 'some_related_field_id': [6, ''], 'some_list_field_ids': [9, 10]},
+             {'id': 4, 'some_related_field_id': [7, ''], 'some_list_field_ids': [11, 12]},
+             {'id': 5, 'some_related_field_id': [8, ''], 'some_list_field_ids': [13, 14]}],
+            [{'id': 9}, {'id': 10}, {'id': 11}, {'id': 12}, {'id': 13}, {'id': 14}],
+            [{'id': 6}, {'id': 7}, {'id': 8}]))
+    def test_multiple_prefetches_same_model_5(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_list_field__some_related_field',
+                                   'some_chain_list_field__some_list_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4, 5], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [9, 10, 11, 12, 13, 14], fields=list(ModelBase.all_fields_odoo_names())),
+            call('model.base', 'read', [6, 7, 8], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_list_field[0].id == 3
+        assert instances[0].some_chain_list_field[1].id == 4
+        assert instances[0].some_chain_list_field[0].some_related_field.id == 6
+        assert instances[0].some_chain_list_field[0].some_list_field[0].id == 9
+        assert instances[0].some_chain_list_field[0].some_list_field[1].id == 10
+        assert instances[0].some_chain_list_field[1].some_related_field.id == 7
+        assert instances[0].some_chain_list_field[1].some_list_field[0].id == 11
+        assert instances[0].some_chain_list_field[1].some_list_field[1].id == 12
+        assert instances[1].some_chain_list_field[0].id == 4
+        assert instances[1].some_chain_list_field[1].id == 5
+        assert instances[1].some_chain_list_field[0].some_related_field.id == 7
+        assert instances[1].some_chain_list_field[0].some_list_field[0].id == 11
+        assert instances[1].some_chain_list_field[0].some_list_field[1].id == 12
+        assert instances[1].some_chain_list_field[1].some_related_field.id == 8
+        assert instances[1].some_chain_list_field[1].some_list_field[0].id == 13
+        assert instances[1].some_chain_list_field[1].some_list_field[1].id == 14
+        spy_execute.assert_not_called()
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values(
+            [{'id': 1, 'some_chain_field_id': [3, '']},
+             {'id': 2, 'some_chain_field_id': [4, '']}],
+            [{'id': 3, 'some_chain_field_id': [5, '']},
+             {'id': 4, 'some_chain_field_id': [6, '']}],
+            [{'id': 5, 'some_related_field_id': [7, ''], 'some_chain_field_id': [9, '']},
+             {'id': 6, 'some_related_field_id': [8, ''], 'some_chain_field_id': [10, '']}],
+            [{'id': 9}, {'id': 10}],
+            [{'id': 7}, {'id': 8}]))
+    def test_multiple_prefetches_same_model_6(self, spy_execute: MagicMock):
+        instances = list(QuerySet(SomeModel)
+                         .prefetch('some_chain_field__some_chain_field__some_related_field',
+                                   'some_chain_field__some_chain_field__some_chain_field'))
+        assert spy_execute.call_args_list == [
+            call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [3, 4], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [5, 6], fields=list(SomeModel.all_fields_odoo_names())),
+            call('some.model', 'read', [9, 10], fields=list(SomeModel.all_fields_odoo_names())),
+            call('model.base', 'read', [7, 8], fields=list(ModelBase.all_fields_odoo_names())),
+        ]
+        spy_execute.reset_mock()
+        assert instances[0].some_chain_field.id == 3
+        assert instances[0].some_chain_field.some_chain_field.id == 5
+        assert instances[0].some_chain_field.some_chain_field.some_related_field.id == 7
+        assert instances[0].some_chain_field.some_chain_field.some_chain_field.id == 9
+        assert instances[1].some_chain_field.id == 4
+        assert instances[1].some_chain_field.some_chain_field.id == 6
+        assert instances[1].some_chain_field.some_chain_field.some_related_field.id == 8
+        assert instances[1].some_chain_field.some_chain_field.some_chain_field.id == 10
+        spy_execute.assert_not_called()
+
     def test_equality(self):
         assert QuerySet(SomeModel) == QuerySet(SomeModel)
         assert QuerySet(SomeModel) != [SomeModel(id=1)]
