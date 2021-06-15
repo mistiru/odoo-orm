@@ -610,7 +610,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
                 error_fields.append(field)
 
         if error_fields:
-            missing_field_names = sorted(reduce(lambda s, f: s & field.odoo_field_names, error_fields, set()))
+            missing_field_names = sorted(reduce(lambda s, f: s | field.odoo_field_names, error_fields, set()))
             raise IncompleteModel(instance, missing_field_names)
 
         return instance
