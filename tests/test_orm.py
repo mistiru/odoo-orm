@@ -6,7 +6,7 @@ from unittest.mock import call, MagicMock
 
 import pytest
 
-from odoo_orm.errors import FieldDoesNotExist, MissingField
+from odoo_orm.errors import FieldDoesNotExist, IncompleteModel
 from odoo_orm.orm import (
     Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, Manager,
     Model, ModelBase, ModelField, ModelListField, QuerySet, StringField,
@@ -131,7 +131,7 @@ class TestField:
         assert instance.some_named_field is None
 
     def test_odoo_missing_fields(self):
-        with pytest.raises(MissingField):
+        with pytest.raises(IncompleteModel):
             SomeModel.from_odoo(id=False)
 
     def test_odoo_missing_field_is_ok_if_null(self):

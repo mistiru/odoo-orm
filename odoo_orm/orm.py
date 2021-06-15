@@ -2,12 +2,12 @@ import re
 from base64 import b64decode
 from datetime import date, datetime
 from decimal import Decimal
-from functools import cached_property
+from functools import cached_property, reduce
 from typing import Any, Generic, Iterable, Optional, Type, TypeVar
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import FieldDoesNotExist, MissingField
+from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, MissingField
 
 connection = OdooConnection.get_connection()
 
@@ -600,9 +600,19 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
     @classmethod
     def from_odoo(cls, **odoo_values) -> MB:
         instance = cls()
+
+        error_fields = []
         for field in instance.fields.values():
-            value = field.construct_and_validate(instance, **odoo_values)
-            field.smart_set(instance, {field.assignable_field_name: value}, initial=True)
+            try:
+                value = field.construct_and_validate(instance, **odoo_values)
+                field.smart_set(instance, {field.assignable_field_name: value}, initial=True)
+            except MissingField:
+                error_fields.append(field)
+
+        if error_fields:
+            missing_field_names = sorted(reduce(lambda s, f: s & field.odoo_field_names, error_fields, set()))
+            raise IncompleteModel(instance, missing_field_names)
+
         return instance
 
     def save(self) -> None:

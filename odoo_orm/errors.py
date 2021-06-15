@@ -22,5 +22,9 @@ class MissingField(OdooORMError):
     pass
 
 
+class IncompleteModel(OdooORMError):
+    pass
+
+
 class FieldDoesNotExist(OdooORMError):
     pass
