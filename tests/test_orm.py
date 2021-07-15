@@ -893,6 +893,19 @@ SomeModel {
         with pytest.raises(InvalidModelState):
             basic_instance.save()
 
+    @pytest.mark.connection_returns(1)
+    def test_create_instance(self, spy_execute: MagicMock):
+        basic_instance = SomeModel(some_field='tut')
+        basic_instance.save()
+
+        spy_execute.assert_called_once_with('some.model', 'create', {
+            'some_field': 'tut',
+        })
+        spy_execute.reset_mock()
+        assert basic_instance.id == 1
+        basic_instance.save()
+        spy_execute.assert_not_called()
+
     def test_save_reset_initial_values(self, spy_execute: MagicMock, basic_instance: SomeModel):
         initial_value = basic_instance.some_field
 

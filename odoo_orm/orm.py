@@ -632,7 +632,10 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
         if 'id' in values:
             raise InvalidModelState('Instance id update is not supported')
 
-        if values:
+        if self.id is None:
+            self.id = connection.execute(self.Meta.name, 'create', values)
+            self._field_id_initial = self.id
+        elif values:
             connection.execute(self.Meta.name, 'write', self.id, values)
 
     def delete(self) -> None:
