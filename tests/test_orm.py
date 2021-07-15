@@ -6,7 +6,7 @@ from unittest.mock import call, MagicMock
 
 import pytest
 
-from odoo_orm.errors import FieldDoesNotExist, IncompleteModel
+from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
 from odoo_orm.orm import (
     Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, Manager,
     Model, ModelBase, ModelField, ModelListField, QuerySet, StringField,
@@ -890,7 +890,7 @@ SomeModel {
 
     def test_cannot_save_id(self, basic_instance: SomeModel):
         basic_instance.id = 2
-        with pytest.raises(Exception):
+        with pytest.raises(InvalidModelState):
             basic_instance.save()
 
     def test_save_reset_initial_values(self, spy_execute: MagicMock, basic_instance: SomeModel):

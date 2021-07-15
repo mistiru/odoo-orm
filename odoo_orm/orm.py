@@ -7,7 +7,7 @@ from typing import Any, Generic, Iterable, Optional, Type, TypeVar
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, MissingField
+from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState, MissingField
 
 connection = OdooConnection.get_connection()
 
@@ -628,7 +628,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             field.set_unchanged(self)
 
         if 'id' in values:
-            raise Exception('Instance creation and id update are not supported yet')
+            raise InvalidModelState('Instance id update is not supported')
 
         if values:
             connection.execute(self.Meta.name, 'write', self.id, values)

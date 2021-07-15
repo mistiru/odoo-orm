@@ -28,3 +28,7 @@ class IncompleteModel(OdooORMError):
 
 class FieldDoesNotExist(OdooORMError):
     pass
+
+
+class InvalidModelState(OdooORMError):
+    pass
