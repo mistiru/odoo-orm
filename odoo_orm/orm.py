@@ -75,6 +75,8 @@ class Field(Generic[T]):
         setattr(instance, self.value_field_name, value)
         if initial:
             setattr(instance, self.initial_value_field_name, value)
+        elif not hasattr(instance, self.initial_value_field_name):
+            setattr(instance, self.initial_value_field_name, None)
 
     def construct(self, **values: Any) -> Any:
         raise NotImplementedError
