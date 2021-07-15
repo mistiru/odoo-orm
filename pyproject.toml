@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "odoo-orm"
-version = "2.0.2"
+version = "2.1.0"
 description = "A kind of Python ORM for Odoo XML-RPC API inspired by Django ORM."
 authors = ["mistiru <dev@mistiru.me>"]
 license = "MIT"
