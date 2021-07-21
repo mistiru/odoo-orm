@@ -968,6 +968,14 @@ SomeModel {
             'some_nullable_related_field_id': False,
         })
 
+    def test_save_verifies_nullable_before_sending_request(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(id=1, some_field='Pouet')
+        assert instance.some_field is not None
+        instance.some_field = None
+        with pytest.raises(IncompleteModel):
+            instance.save()
+        spy_execute.assert_not_called()
+
     def test_delete(self, spy_execute: MagicMock, basic_instance: SomeModel):
         basic_instance.delete()
         spy_execute.assert_called_once_with('some.model', 'unlink', [1])

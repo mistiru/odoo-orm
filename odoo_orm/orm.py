@@ -128,7 +128,13 @@ class SimpleField(Generic[T], Field[T]):
         return value
 
     def deconstruct(self, value: Optional[T]) -> dict:
-        odoo_val = False if value is None else self.to_odoo(value)
+        if value is not None:
+            odoo_val = self.to_odoo(value)
+        elif self.null:
+            odoo_val = False
+        else:
+            raise ValueError('value cannot be None')
+
         return {self.odoo_field_name: odoo_val}
 
 
@@ -658,7 +664,10 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             if not field.has_changed(self):
                 continue
 
-            values.update(field.deconstruct(value))
+            try:
+                values.update(field.deconstruct(value))
+            except ValueError:
+                raise IncompleteModel(self, sorted(field.odoo_field_names))
 
             field.set_unchanged(self)
 
