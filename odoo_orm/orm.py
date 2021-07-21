@@ -1,4 +1,5 @@
 import re
+import warnings
 from base64 import b64decode
 from datetime import date, datetime
 from decimal import Decimal
@@ -128,7 +129,13 @@ class SimpleField(Generic[T], Field[T]):
         return value
 
     def deconstruct(self, value: Optional[T]) -> dict:
-        odoo_val = False if value is None else self.to_odoo(value)
+        if value is not None:
+            odoo_val = self.to_odoo(value)
+        elif self.null:
+            odoo_val = False
+        else:
+            raise ValueError('value cannot be None')
+
         return {self.odoo_field_name: odoo_val}
 
 
@@ -658,7 +665,13 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             if not field.has_changed(self):
                 continue
 
-            values.update(field.deconstruct(value))
+            try:
+                values.update(field.deconstruct(value))
+            except ValueError:
+                message = (f'Model "{self}" is missing required field "{sorted(field.odoo_field_names)}".'
+                           f' This will throw IncompleteModel exception in version 3.0.')
+                warnings.warn(DeprecationWarning(message))
+                values.update({name: False for name in field.odoo_field_names})
 
             field.set_unchanged(self)
 
