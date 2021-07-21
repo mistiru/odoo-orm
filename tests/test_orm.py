@@ -959,6 +959,15 @@ SomeModel {
             'some_null_field': False,
         })
 
+    def test_save_turns_none_into_false_even_for_related_fields(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(id=1, some_nullable_related_field_id=[2, 'tut'])
+        assert instance.some_nullable_related_field_id is not None
+        instance.some_nullable_related_field = None
+        instance.save()
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_nullable_related_field_id': False,
+        })
+
     def test_delete(self, spy_execute: MagicMock, basic_instance: SomeModel):
         basic_instance.delete()
         spy_execute.assert_called_once_with('some.model', 'unlink', [1])

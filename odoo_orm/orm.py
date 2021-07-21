@@ -278,7 +278,8 @@ class ModelField(Generic[Rel], RelatedField[Rel, Rel]):
         if self.name in values:
             value = values[self.name]
             setattr(instance, self.instance_field_name, value)
-            super().smart_set(instance, {self.value_field_name: value.id}, initial=initial)
+            _id_value = value and value.id
+            super().smart_set(instance, {self.value_field_name: _id_value}, initial=initial)
         else:
             super().smart_set(instance, values, initial=initial)
 
