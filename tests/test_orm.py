@@ -49,7 +49,7 @@ class SomeModel(ModelBase['SomeModel']):
         'some_boolean_field': False,
         'some_decimal_field': 0.0,
         'some_date_field': datetime.strftime(datetime(1999, 1, 1), DateField.date_format),
-        'some_chain_field_id': [9999999, ''],
+        'some_chain_field_id': [999999, ''],
         'some_chain_list_field_ids': [],
         'some_nullable_related_field_id': False,
         'some_datetime_field': datetime.strftime(datetime(1999, 1, 1), DatetimeField.datetime_format),

@@ -212,7 +212,7 @@ class RelatedField(Generic[Rel, T], SimpleField[T]):
             self.related_model = owner
         elif not (isinstance(self.related_model, type) and issubclass(self.related_model, ModelBase)):
             raise Exception('Only subclasses of "ModelBase" and "self" are accepted as "model" argument of'
-                            ' ModelField')
+                            ' RelatedField')
 
 
 class ModelField(Generic[Rel], RelatedField[Rel, Rel]):
