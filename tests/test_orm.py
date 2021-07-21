@@ -7,10 +7,9 @@ from unittest.mock import call, MagicMock
 import pytest
 
 from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
-from odoo_orm.orm import (
-    Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, Manager,
-    Model, ModelBase, ModelField, ModelListField, QuerySet, StringField,
-)
+from odoo_orm.orm import (Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField,
+                          LazyReference, Manager, Model, ModelBase, ModelField, ModelListField, QuerySet, resolves,
+                          StringField)
 
 
 def test_camel_to_snake_case():
@@ -22,6 +21,9 @@ def test_camel_to_snake_case():
     assert c2s('TesT') == 'tes.t'
     assert c2s('TTT') == 't.t.t'
     assert c2s('T') == 't'
+
+
+late_declared_model = LazyReference()
 
 
 class SomeModel(ModelBase['SomeModel']):
@@ -38,6 +40,7 @@ class SomeModel(ModelBase['SomeModel']):
     some_chain_list_field = ModelListField(model='self')
     some_nullable_related_field = ModelField(model=ModelBase, null=True)
     some_datetime_field = DatetimeField()
+    some_resolvable_field = ModelField(model=late_declared_model)
 
     ODOO_DEFAULT_VALUES_DICT = {
         'some_field': '',
@@ -53,6 +56,7 @@ class SomeModel(ModelBase['SomeModel']):
         'some_chain_list_field_ids': [],
         'some_nullable_related_field_id': False,
         'some_datetime_field': datetime.strftime(datetime(1999, 1, 1), DatetimeField.datetime_format),
+        'some_resolvable_field_id': [999999, ''],
     }
 
     @staticmethod
@@ -63,6 +67,11 @@ class SomeModel(ModelBase['SomeModel']):
                     odoo_return_value.setdefault(field, default_value)
 
         return odoo_return_values_list
+
+
+@resolves(late_declared_model)
+class LateDeclaredModel(ModelBase['LateDeclaredModel']):
+    some_model = ModelField(model=SomeModel)
 
 
 @pytest.fixture
@@ -97,7 +106,7 @@ class TestMetaModel:
                                  ('some_boolean_field', BooleanField), ('some_decimal_field', DecimalField),
                                  ('some_date_field', DateField), ('some_chain_field', ModelField),
                                  ('some_chain_list_field', ModelListField), ('some_nullable_related_field', ModelField),
-                                 ('some_datetime_field', DatetimeField)):
+                                 ('some_datetime_field', DatetimeField), ('some_resolvable_field', ModelField)):
             assert name in SomeModel.fields
             assert isinstance(SomeModel.fields[name], field_type)
 
@@ -189,6 +198,13 @@ class TestField:
         assert list(map(attrgetter('id'), instance.some_chain_list_field)) == [3, 4]
         spy_execute.assert_called_once_with('some.model', 'read', [3, 4],
                                             fields=list(SomeModel.all_fields_odoo_names()))
+
+    @pytest.mark.connection_returns([{'id': 1, 'some_model_id': [2, 'ohayou']}])
+    def test_resolvable_field(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(some_resolvable_field_id=[1, 'tutturu'])
+        assert instance.some_resolvable_field.id == 1
+        spy_execute.assert_called_once_with('late.declared.model', 'read', [1],
+                                            fields=list(LateDeclaredModel.all_fields_odoo_names()))
 
 
 class TestQuerySet:
@@ -805,7 +821,8 @@ class TestModelBase:
                                                            'some_b64_field', 'some_boolean_field', 'some_decimal_field',
                                                            'some_date_field', 'some_chain_field_id',
                                                            'some_chain_list_field_ids',
-                                                           'some_nullable_related_field_id', 'some_datetime_field']
+                                                           'some_nullable_related_field_id', 'some_datetime_field',
+                                                           'some_resolvable_field_id']
 
     def test_field_odoo_names(self):
         assert list(SomeModel.field_odoo_names('some_field')) == ['some_field']

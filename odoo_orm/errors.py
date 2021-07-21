@@ -32,3 +32,7 @@ class FieldDoesNotExist(OdooORMError):
 
 class InvalidModelState(OdooORMError):
     pass
+
+
+class LazyReferenceNotResolved(OdooORMError):
+    pass

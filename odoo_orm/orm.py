@@ -3,11 +3,12 @@ from base64 import b64decode
 from datetime import date, datetime
 from decimal import Decimal
 from functools import cached_property, reduce
-from typing import Any, Generic, Iterable, Optional, Type, TypeVar
+from typing import Any, Generic, Iterable, Optional, Type, TypeVar, Union
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState, MissingField
+from odoo_orm.errors import (FieldDoesNotExist, IncompleteModel, InvalidModelState, LazyReferenceNotResolved,
+                             MissingField)
 
 connection = OdooConnection.get_connection()
 
@@ -199,9 +200,35 @@ class DatetimeField(SimpleField[datetime]):
         return datetime.strftime(value.astimezone(ZoneInfo('UTC')), self.datetime_format)
 
 
+class LazyReference:
+    field: 'RelatedField' = None
+    model: 'ModelBase' = None
+
+    def attach(self, field):
+        self.field = field
+        self._do_resolution()
+
+    def resolve(self, model):
+        self.model = model
+        self._do_resolution()
+
+    def _do_resolution(self):
+        if self.field and self.model:
+            self.field.related_model = self.model
+
+
+def resolves(*refs: LazyReference):
+    def wrapper(model: Model):
+        for ref in refs:
+            ref.resolve(model)
+        return model
+
+    return wrapper
+
+
 class RelatedField(Generic[Rel, T], SimpleField[T]):
 
-    def __init__(self, odoo_field_name: str = None, /, *, model: Type[Rel], null=False) -> None:
+    def __init__(self, odoo_field_name: str = None, /, *, model: Union[Type[Rel], LazyReference], null=False) -> None:
         super().__init__(odoo_field_name, null=null)
         self.related_model = model
 
@@ -210,6 +237,8 @@ class RelatedField(Generic[Rel, T], SimpleField[T]):
 
         if self.related_model == 'self':
             self.related_model = owner
+        elif isinstance(self.related_model, LazyReference):
+            self.related_model.attach(self)
         elif not (isinstance(self.related_model, type) and issubclass(self.related_model, ModelBase)):
             raise Exception('Only subclasses of "ModelBase" and "self" are accepted as "model" argument of'
                             ' RelatedField')
@@ -553,6 +582,9 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
 
     def __init__(self, **values: Any) -> None:
         for field in self.fields.values():
+            if isinstance(field, RelatedField) and isinstance(field.related_model, LazyReference):
+                raise LazyReferenceNotResolved(f'Lazy reference for field {field.name} has not been resolved')
+
             field.smart_set(self, values)
 
     def __eq__(self, other) -> bool:
