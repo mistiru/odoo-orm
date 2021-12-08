@@ -13,10 +13,9 @@ class OdooConnection:
 
     db: str
     uid: int
+    url: str
     password: str
     safe: bool
-    models: ServerProxy
-    reports: ServerProxy
 
     def __init__(self) -> None:
         if OdooConnection.CONNECTION:
@@ -40,12 +39,19 @@ class OdooConnection:
             if uid:
                 self.db = db
                 self.uid = uid
+                self.url = url
                 self.password = password
                 self.safe = safe
-                self.models = ServerProxy(f'{url}/xmlrpc/2/object')
-                self.reports = ServerProxy(f'{url}/xmlrpc/2/report')
             else:
                 raise OdooConnectionError('Wrong email or password')
+
+    @property
+    def models(self):
+        return ServerProxy(f'{self.url}/xmlrpc/2/object')
+
+    @property
+    def reports(self):
+        return ServerProxy(f'{self.url}/xmlrpc/2/report')
 
     def execute(self, model: str, action: str, *params, **options) -> list[dict[str, Any]]:
         if not hasattr(self, 'models'):
