@@ -60,10 +60,10 @@ class OdooConnection:
         if not self.safe and action not in ('search', 'search_read', 'read', 'read_group'):
             raise UnsafeOperationNotAllowed('Trying to perform an unsafe operation in unsafe environment')
 
-        with self.models:
+        with self.models as proxy:
             logger.debug(f'models.execute_kw({self.db!r}, {self.uid!r}, {self.password!r}, {model!r}, {action!r},'
                          f' {params!r}, {options!r})')
-            return self.models.execute_kw(self.db, self.uid, self.password, model, action, params, options)
+            return proxy.execute_kw(self.db, self.uid, self.password, model, action, params, options)
 
     def render_report(self, report_name: str, model_id: int, **options) -> dict[str, Any]:
         if not hasattr(self, 'reports'):
@@ -72,7 +72,7 @@ class OdooConnection:
         if not self.safe:
             raise UnsafeOperationNotAllowed('Trying to perform an unsafe operation in unsafe environment')
 
-        with self.reports:
+        with self.reports as proxy:
             logger.debug(f'reports.render_report({self.db!r}, {self.uid!r}, {self.password!r}, {report_name!r},'
                          f' {[model_id]!r}, {options!r})')
-            return self.reports.render_report(self.db, self.uid, self.password, report_name, [model_id], options)
+            return proxy.render_report(self.db, self.uid, self.password, report_name, [model_id], options)
