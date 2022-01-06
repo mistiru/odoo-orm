@@ -660,12 +660,11 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
     def save(self) -> None:
         values = {}
         for field in self.fields.values():
-            value = getattr(self, field.value_field_name)
-
             if not field.has_changed(self):
                 continue
 
             try:
+                value = getattr(self, field.value_field_name)
                 values.update(field.deconstruct(value))
             except ValueError:
                 message = (f'Model "{self}" is missing required field "{sorted(field.odoo_field_names)}".'
@@ -673,19 +672,21 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
                 warnings.warn(DeprecationWarning(message))
                 values.update({name: False for name in field.odoo_field_names})
 
-            field.set_unchanged(self)
-
         if 'id' in values:
             raise InvalidModelState('Instance id update is not supported')
 
         if self.id is None:
-            self.id = connection.execute(self.Meta.name, 'create', values)
-            self._field_id_initial = self.id
+            self.id = self._field_id_initial = connection.execute(self.Meta.name, 'create', values)
         elif values:
             connection.execute(self.Meta.name, 'write', self.id, values)
 
+        for field in self.fields.values():
+            if field.has_changed(self):
+                field.set_unchanged(self)
+
     def delete(self) -> None:
         connection.execute(self.Meta.name, 'unlink', [self.id])
+        self.id = self._field_id_initial = None
 
 
 class Attachment(ModelBase['Attachment']):
