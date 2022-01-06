@@ -55,11 +55,21 @@ class OdooConnectionProxy:
     def __init__(self, data):
         self.data = data
 
+    def _next_data(self):
+        if self.data:
+            data = next(self.data)
+            if isinstance(data, BaseException):
+                raise data
+            else:
+                return data
+        else:
+            return None
+
     def execute(self, *args, **kwargs):
-        return self.data and next(self.data)
+        return self._next_data()
 
     def render_report(self, *args, **kwargs):
-        return self.data and next(self.data)
+        return self._next_data()
 
 
 @pytest.fixture

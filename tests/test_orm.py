@@ -1,10 +1,10 @@
-from _zoneinfo import ZoneInfo
 from base64 import b64encode
 from datetime import date, datetime
 from operator import attrgetter
 from unittest.mock import call, MagicMock
 
 import pytest
+from _zoneinfo import ZoneInfo
 
 from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
 from odoo_orm.orm import (Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField,
@@ -78,6 +78,10 @@ class LateDeclaredModel(ModelBase['LateDeclaredModel']):
 def basic_instance():
     return SomeModel.from_odoo(id=1, some_field='tut', some_related_field_id=[2, 'tut'], some_list_field_ids=[3, 4],
                                named_string='pouet')
+
+
+class CustomException(Exception):
+    pass
 
 
 # class MoneyField(Field[tuple[int, str]]):
@@ -944,6 +948,28 @@ SomeModel {
         spy_execute.assert_called_once_with('some.model', 'write', 1, {
             'some_field': initial_value,
         })
+
+    @pytest.mark.connection_returns(CustomException('douuuze'), True)
+    def test_save_does_not_reset_on_failure(self, spy_execute: MagicMock, basic_instance: SomeModel):
+        basic_instance.some_field = 'tutturu'
+
+        with pytest.raises(CustomException):
+            basic_instance.save()
+
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_field': 'tutturu',
+        })
+        spy_execute.reset_mock()
+
+        assert basic_instance._field_some_field_initial != 'tutturu'
+
+        basic_instance.save()
+
+        spy_execute.assert_called_once_with('some.model', 'write', 1, {
+            'some_field': 'tutturu',
+        })
+
+        assert basic_instance._field_some_field_initial == 'tutturu'
 
     def test_form_odoo_(self, basic_instance: SomeModel):
         basic_instance2 = SomeModel(id=1, some_field='tut', some_related_field=ModelBase(id=2),
