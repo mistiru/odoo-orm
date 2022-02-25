@@ -3,7 +3,7 @@ from base64 import b64decode
 from datetime import date, datetime
 from decimal import Decimal
 from functools import cached_property, reduce
-from typing import Any, Generic, Iterable, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Optional, Type, TypeVar, Union
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
@@ -524,28 +524,18 @@ class QuerySet(Generic[MB]):
 class Manager(Generic[MB]):
 
     def __init__(self, model: Type[MB]) -> None:
-        self.queryset = QuerySet[MB](model)
+        self.model = model
 
-    def all(self) -> QuerySet[MB]:
-        return self.queryset
+    def __getattr__(self, item: str) -> Callable[[], QuerySet[MB]]:
+        queryset = self.get_queryset()
 
-    def filter(self, **kwargs) -> QuerySet[MB]:
-        return self.queryset.filter(**kwargs)
+        if item == 'all':
+            return lambda: queryset
+        else:
+            return getattr(queryset, item)
 
-    def values(self, *fields: str) -> QuerySet[MB]:
-        return self.queryset.values(*fields)
-
-    def limit(self, number: int) -> QuerySet[MB]:
-        return self.queryset.limit(number)
-
-    def order_by(self, *fields: str) -> QuerySet[MB]:
-        return self.queryset.order_by(*fields)
-
-    def get(self, **kwargs) -> MB:
-        return self.queryset.get(**kwargs)
-
-    def prefetch(self, *field_names: str) -> QuerySet[MB]:
-        return self.queryset.prefetch(*field_names)
+    def get_queryset(self) -> QuerySet[MB]:
+        return QuerySet[MB](self.model)
 
 
 class MetaModel(type):

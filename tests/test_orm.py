@@ -1,10 +1,10 @@
+from _zoneinfo import ZoneInfo
 from base64 import b64encode
 from datetime import date, datetime
 from operator import attrgetter
 from unittest.mock import call, MagicMock
 
 import pytest
-from _zoneinfo import ZoneInfo
 
 from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
 from odoo_orm.orm import (Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField,
@@ -117,7 +117,7 @@ class TestMetaModel:
     def test_model_objects(self):
         assert hasattr(SomeModel, 'objects')
         assert isinstance(SomeModel.objects, Manager)
-        assert SomeModel.objects.queryset.model == SomeModel
+        assert SomeModel.objects.model == SomeModel
 
     def test_model_meta(self):
         assert hasattr(SomeModel, 'Meta')
@@ -798,18 +798,27 @@ class TestManager:
 
     def test_all(self):
         assert SomeModel.objects.all() == QuerySet(SomeModel)
+        assert SomeModel.objects.all() is not SomeModel.objects.all()
 
     def test_filter(self):
         assert SomeModel.objects.filter(name='tut') == QuerySet(SomeModel).filter(name='tut')
+        assert SomeModel.objects.filter() is not SomeModel.objects.filter()
 
     def test_values(self):
         assert SomeModel.objects.values('some_field') == QuerySet(SomeModel).values('some_field')
+        assert SomeModel.objects.values() is not SomeModel.objects.values()
 
     def test_limit(self):
         assert SomeModel.objects.limit(3) == QuerySet(SomeModel).limit(3)
+        assert SomeModel.objects.limit(1) is not SomeModel.objects.limit(1)
 
     def test_order_by(self):
         assert SomeModel.objects.order_by('some_field') == QuerySet(SomeModel).order_by('some_field')
+        assert SomeModel.objects.order_by() is not SomeModel.objects.order_by()
+
+    def test_prefetch(self):
+        assert SomeModel.objects.prefetch('some_field') == QuerySet(SomeModel).prefetch('some_field')
+        assert SomeModel.objects.prefetch() is not SomeModel.objects.prefetch()
 
     @pytest.mark.connection_returns([{'id': 1}])
     def test_get(self, spy_execute: MagicMock):
