@@ -427,6 +427,8 @@ class QuerySet(Generic[MB]):
             elif kw == 'order_by':
                 new.options['order'] = ', '.join(field.lstrip('-') + (' desc' if field.startswith('-') else ' asc')
                                                  for field in val)
+            elif kw == 'prefetch':
+                new.prefetches |= set(val)
             else:
                 raise Exception(f'Argument not recognized {kw}')
 
@@ -443,6 +445,9 @@ class QuerySet(Generic[MB]):
 
     def order_by(self, *fields: str) -> 'QuerySet[MB]':
         return self._enhance(order_by=fields)
+
+    def prefetch(self, *field_names: str) -> 'QuerySet[MB]':
+        return self._enhance(prefetch=field_names)
 
     def get(self, **kwargs) -> MB:
         if kwargs:
@@ -468,13 +473,6 @@ class QuerySet(Generic[MB]):
         res = connection.execute(self.model.Meta.name, 'unlink', ids)
         if res is not True:
             raise Exception(res)
-
-    def prefetch(self, *field_names: str) -> 'QuerySet[MB]':
-        if self.cache is None:
-            self.prefetches |= set(field_names)
-        else:
-            self._prefetch(*field_names)
-        return self
 
     def _prefetch(self, *field_names: str) -> None:
         # Extract field names related to this prefetch
