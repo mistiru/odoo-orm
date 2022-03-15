@@ -31,4 +31,7 @@ jobs:
         run: poetry install
 
       - name: Run tests
-        run: poetry run pytest --cov=odoo_orm tests
+        run: poetry run pytest --cov=odoo_orm --cov-report xml tests
+
+      - name: Upload coverage results
+        uses: codecov/codecov-action@v2
