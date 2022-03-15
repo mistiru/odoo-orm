@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - '**'
+
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Poetry
+        uses: Gr1N/setup-poetry@v7
+
+      - name: Install project
+        run: poetry install
+
+      - name: Run tests
+        run: poetry run pytest --cov=odoo_orm tests
