@@ -33,7 +33,7 @@ def odoo(mocker: MockerFixture):
     connection = OdooConnection.get_connection()
     mocker.patch('odoo_orm.connection.ServerProxy', OdooServerProxy)
     yield connection
-    OdooConnection.CONNECTION = None
+    OdooConnection._CONNECTION = None
 
 
 @pytest.fixture

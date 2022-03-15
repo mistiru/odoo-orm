@@ -1,24 +1,20 @@
 import re
 from base64 import b64decode
+from copy import copy
 from datetime import date, datetime
 from decimal import Decimal
 from functools import cached_property, reduce
-from typing import Any, Callable, Generic, Iterable, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Type, Union
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
 from odoo_orm.errors import (
-    FieldDoesNotExist, IncompleteModel, InvalidModelState, LazyReferenceNotResolved, MissingField,
+    AlreadyAssignedField, FieldDoesNotExist, InvalidModelState, LazyReferenceNotResolved, MissingValue, MissingValues,
 )
 
 connection = OdooConnection.get_connection()
 
-MB = TypeVar('MB', bound='ModelBase')
-Rel = TypeVar('Rel', bound='ModelBase')
-T = TypeVar('T')
 Filter = tuple[str, str, Any]
-
-c2s_pattern = re.compile(r'(?<!^)(?=[A-Z])')
 
 ODOO_OPERATIONS = {
     'ne': '!=',
@@ -30,82 +26,99 @@ ODOO_OPERATIONS = {
     'not_in': 'not in',
 }
 
-
-def c2s(s: str):
-    return c2s_pattern.sub('.', s).lower()
+C2S_PATTERN = re.compile(r'(?<!^)(?=[A-Z])')
 
 
-class Field(Generic[T]):
+def c2s(s: str) -> str:
+    return C2S_PATTERN.sub('.', s).lower()
 
-    def __init__(self, *odoo_field_names: str, null=False) -> None:
-        self.null = null
+
+class Field:
+    SAVED_VALUE_NAME_PREFIX = '__saved_'
+
+    def __init__(self, *odoo_field_names: str, nullable=False) -> None:
         self.odoo_field_names = set(odoo_field_names)
+        self.nullable = nullable
 
-    def __set_name__(self, owner: Type[MB], name: str) -> None:
-        self.model = owner
+        self.name: str = None
+
+    def __set_name__(self, owner, name: str) -> None:
+        if self.name is not None:
+            raise AlreadyAssignedField()
+
+        if name.startswith('_'):
+            raise ValueError('Cannot assign a Field to a private or magic attribute.')
+
         self.name = name
+
         if not self.odoo_field_names:
             self.odoo_field_names = self.default_odoo_field_names
-        self.initial_value_field_name = f'_field_{name}_initial'
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[T]:
-        return getattr(instance, self.value_field_name)
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
 
-    def __set__(self, instance: MB, value: Optional[T]) -> None:
-        self.smart_set(instance, {self.name: value})
+        sentinel = object()
+        value = instance.__dict__.get(self.name, sentinel)
+        if value is sentinel:
+            if self.name != 'id' and instance.id and hasattr(instance, '_completion_callback'):
+                value = self.__get__(instance._completion_callback(), owner)
+            else:
+                raise AttributeError
+
+        return value
+
+    def __set__(self, instance, value) -> None:
+        if value is None and not self.nullable:
+            raise ValueError(f'{instance}.{self.name} cannot be None.')
+
+        instance.__dict__[self.name] = value
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
         raise NotImplementedError
 
     @cached_property
-    def value_field_name(self) -> str:
-        return f'_field_{self.name}_value'
+    def saved_value_name(self) -> str:
+        return f'{Field.SAVED_VALUE_NAME_PREFIX}{self.name}'
 
-    @cached_property
-    def assignable_field_name(self) -> str:
-        return self.name
+    def from_odoo(self, instance, **odoo_values: Any) -> None:
+        relevant_odoo_values = {k: v for k, v in odoo_values.items() if k in self.odoo_field_names}
+        if len(relevant_odoo_values) < len(self.odoo_field_names):
+            return
 
-    def has_changed(self, instance: MB) -> bool:
-        return getattr(instance, self.value_field_name) != getattr(instance, self.initial_value_field_name)
+        value = self.construct(**relevant_odoo_values)
 
-    def set_unchanged(self, instance: MB) -> None:
-        setattr(instance, self.initial_value_field_name, getattr(instance, self.value_field_name))
+        try:
+            setattr(instance, self.name, value)
+            self.save(instance)
+        except ValueError:
+            raise MissingValue(instance, self.odoo_field_names)
 
-    def smart_set(self, instance: MB, values: dict[str, Optional[T]], *, initial=False) -> None:
-        value = values.get(self.assignable_field_name)
-        setattr(instance, self.value_field_name, value)
-        if initial:
-            setattr(instance, self.initial_value_field_name, value)
-        elif not hasattr(instance, self.initial_value_field_name):
-            setattr(instance, self.initial_value_field_name, None)
-
-    def construct(self, **values: Any) -> Any:
+    def construct(self, **odoo_values: Any):
         raise NotImplementedError
 
-    def construct_and_validate(self, instance: MB, **values: Any) -> Any:
-        relevant_values = {k: v for k, v in values.items() if k in self.odoo_field_names}
-        if len(relevant_values) < len(self.odoo_field_names):
-            return None
+    def save(self, instance) -> None:
+        value = getattr(instance, self.name)
+        setattr(instance, self.saved_value_name, copy(value))
 
-        value = self.construct(**relevant_values)
+    def has_changed(self, instance) -> bool:
+        value = getattr(instance, self.name)
+        sentinel = object()
+        saved_value = getattr(instance, self.saved_value_name, sentinel)
+        return value is not sentinel and value != saved_value
 
-        if value is None and not self.null:
-            raise MissingField(instance, self.odoo_field_names)
-
-        return value
-
-    def deconstruct(self, value: Optional[T]) -> dict:
+    def deconstruct(self, value) -> dict[str, Any]:
         raise NotImplementedError
 
 
-class SimpleField(Generic[T], Field[T]):
+class SimpleField(Field):
 
-    def __init__(self, odoo_field_name: str = None, /, *, null=False) -> None:
+    def __init__(self, odoo_field_name: str = None, /, *, nullable=False) -> None:
         if odoo_field_name is None:
-            super().__init__(null=null)
+            super().__init__(nullable=nullable)
         else:
-            super().__init__(odoo_field_name, null=null)
+            super().__init__(odoo_field_name, nullable=nullable)
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
@@ -115,117 +128,103 @@ class SimpleField(Generic[T], Field[T]):
     def odoo_field_name(self) -> str:
         return list(self.odoo_field_names)[0]
 
-    def to_python(self, value: Any) -> Any:
-        return value
-
-    def construct(self, **values: Any) -> Any:
-        value = values[self.odoo_field_name]
+    def construct(self, **odoo_values: Any):
+        value = odoo_values[self.odoo_field_name]
         if value is False:
             return None
         else:
             return self.to_python(value)
 
-    def to_odoo(self, value: T) -> Any:
-        return value
+    def to_python(self, odoo_value: Any):
+        return odoo_value
 
-    def deconstruct(self, value: Optional[T]) -> dict:
+    def deconstruct(self, value) -> dict[str, Any]:
         if value is not None:
-            odoo_val = self.to_odoo(value)
-        elif self.null:
-            odoo_val = False
+            odoo_value = self.to_odoo(value)
+        elif self.nullable:
+            odoo_value = False
         else:
             raise ValueError('value cannot be None')
 
-        return {self.odoo_field_name: odoo_val}
+        return {self.odoo_field_name: odoo_value}
+
+    def to_odoo(self, value) -> Any:
+        return value
 
 
-class IntegerField(SimpleField[int]):
-    to_python = int
+class IntegerField(SimpleField):
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[int]:
-        return super().__get__(instance, owner)
-
-
-class StringField(SimpleField[str]):
-
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[str]:
-        return super().__get__(instance, owner)
+    def to_python(self, odoo_value: Any) -> int:
+        return int(odoo_value)
 
 
-class B64Field(SimpleField[bytes]):
-
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[bytes]:
-        return super().__get__(instance, owner)
-
-    def to_python(self, value: Any) -> bytes:
-        return b64decode(value)
+class StringField(SimpleField):
+    pass
 
 
-class BooleanField(SimpleField[bool]):
+class B64Field(SimpleField):
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> bool:
-        return super().__get__(instance, owner)
+    def to_python(self, odoo_value: str) -> bytes:
+        return b64decode(odoo_value)
 
-    def construct(self, **values: Any) -> bool:
+
+class BooleanField(SimpleField):
+
+    def construct(self, **odoo_values: bool) -> bool:
         # Do not check if null
-        return bool(values[list(self.odoo_field_names)[0]])
+        return bool(odoo_values[self.odoo_field_name])
 
 
-class DecimalField(SimpleField[Decimal]):
-    to_odoo = float
+class DecimalField(SimpleField):
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[Decimal]:
-        return super().__get__(instance, owner)
+    def to_python(self, odoo_value: Any) -> Decimal:
+        return Decimal(str(odoo_value)).quantize(Decimal('.01'))
 
-    def to_python(self, value: Any) -> Decimal:
-        return Decimal(str(value)).quantize(Decimal('.01'))
-
-
-class DateField(SimpleField[date]):
-    date_format = '%Y-%m-%d'
-
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[date]:
-        return super().__get__(instance, owner)
-
-    def to_python(self, value: Any) -> date:
-        return datetime.strptime(value, self.date_format).date()
-
-    def to_odoo(self, value: date) -> Any:
-        return date.strftime(value, self.date_format)
+    def to_odoo(self, value: Decimal) -> float:
+        return float(value)
 
 
-class DatetimeField(SimpleField[datetime]):
-    datetime_format = '%Y-%m-%d %H:%M:%S'
+class DateField(SimpleField):
+    DATE_FORMAT = '%Y-%m-%d'
 
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[datetime]:
-        return super().__get__(instance, owner)
+    def to_python(self, odoo_value: str) -> date:
+        return datetime.strptime(odoo_value, self.DATE_FORMAT).date()
 
-    def to_python(self, value: Any) -> datetime:
-        return datetime.strptime(value, self.datetime_format).replace(tzinfo=ZoneInfo('UTC'))
+    def to_odoo(self, value: date) -> str:
+        return date.strftime(value, self.DATE_FORMAT)
 
-    def to_odoo(self, value: datetime) -> Any:
-        return datetime.strftime(value.astimezone(ZoneInfo('UTC')), self.datetime_format)
+
+class DatetimeField(SimpleField):
+    DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+    def to_python(self, odoo_value: str) -> datetime:
+        return datetime.strptime(odoo_value, self.DATETIME_FORMAT).replace(tzinfo=ZoneInfo('UTC'))
+
+    def to_odoo(self, value: datetime) -> str:
+        return datetime.strftime(value.astimezone(ZoneInfo('UTC')), self.DATETIME_FORMAT)
 
 
 class LazyReference:
-    field: 'RelatedField' = None
-    model: 'ModelBase' = None
 
-    def attach(self, field):
+    def __init__(self) -> None:
+        self.field: Optional[RelatedField] = None
+        self.model: Optional[Type[ModelBase]] = None
+
+    def attach(self, field: 'RelatedField') -> None:
         self.field = field
         self._do_resolution()
 
-    def resolve(self, model):
+    def resolve(self, model: Type['ModelBase']) -> None:
         self.model = model
         self._do_resolution()
 
-    def _do_resolution(self):
-        if self.field and self.model:
+    def _do_resolution(self) -> None:
+        if self.field is not None and self.model is not None:
             self.field.related_model = self.model
 
 
 def resolves(*refs: LazyReference):
-    def wrapper(model: Model):
+    def wrapper(model: Type['ModelBase']):
         for ref in refs:
             ref.resolve(model)
         return model
@@ -233,136 +232,113 @@ def resolves(*refs: LazyReference):
     return wrapper
 
 
-class RelatedField(Generic[Rel, T], SimpleField[T]):
+Target = Union[str, LazyReference, Type['ModelBase']]
 
-    def __init__(self, odoo_field_name: str = None, /, *, model: Union[Type[Rel], LazyReference], null=False) -> None:
-        super().__init__(odoo_field_name, null=null)
+
+class RelatedField(SimpleField):
+
+    def __init__(self, odoo_field_name: str = None, /, *, model: Target, nullable=False) -> None:
+        super().__init__(odoo_field_name, nullable=nullable)
+
+        if isinstance(model, LazyReference):
+            model.attach(self)
+
         self.related_model = model
 
-    def __set_name__(self, owner: Type[MB], name: str) -> None:
+    def __set_name__(self, owner, name) -> None:
         super().__set_name__(owner, name)
 
         if self.related_model == 'self':
             self.related_model = owner
-        elif isinstance(self.related_model, LazyReference):
-            self.related_model.attach(self)
-        elif not (isinstance(self.related_model, type) and issubclass(self.related_model, ModelBase)):
-            raise Exception('Only subclasses of "ModelBase" and "self" are accepted as "model" argument of'
-                            ' RelatedField')
 
 
-class ModelField(Generic[Rel], RelatedField[Rel, Rel]):
-
-    def __set_name__(self, owner: Type[MB], name: str) -> None:
-        super().__set_name__(owner, name)
-
-        self.instance_field_name = f'_field_{name}_instance'
-
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional[Rel]:
-        rel_id = getattr(instance, self.value_field_name)
-        if rel_id is None:
-            return None
-        else:
-            rel_instance = getattr(instance, self.instance_field_name, None)
-            if rel_instance is None:
-                rel_instance = self.related_model.objects.get(id=rel_id)
-                setattr(instance, self.instance_field_name, rel_instance)
-            return rel_instance
+class ModelField(RelatedField):
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
-        return {self.value_field_name}
+        return {f'{self.name}_id'}
 
-    @cached_property
-    def value_field_name(self) -> str:
-        return f'{self.name}_id'
+    def from_odoo(self, instance, **odoo_values: Any) -> None:
+        super().from_odoo(instance, **odoo_values)
 
-    @cached_property
-    def assignable_field_name(self) -> str:
-        return self.value_field_name
+        dummy = getattr(instance, self.name, None)
+        if dummy is not None:
+            dummy._completion_callback = lambda: self.completion_callback(instance)
 
-    def smart_set(self, instance: MB, values: dict[str, Optional[Rel]], *, initial=False) -> None:
-        if self.name in values:
-            value = values[self.name]
-            setattr(instance, self.instance_field_name, value)
-            _id_value = value and value.id
-            super().smart_set(instance, {self.value_field_name: _id_value}, initial=initial)
-        else:
-            super().smart_set(instance, values, initial=initial)
+    def to_python(self, odoo_value: tuple[int, str]) -> 'ModelBase':
+        if isinstance(self.related_model, LazyReference):
+            raise LazyReferenceNotResolved(f'Lazy reference for field {self.name} has not been resolved')
 
-    def to_python(self, value: Any) -> Any:
-        return value[0]
+        return self.related_model(id=odoo_value[0], name=odoo_value[1])
+
+    def completion_callback(self, instance) -> 'ModelBase':
+        dummy = getattr(instance, self.name)
+        related = self.related_model.objects.get(id=dummy.id)
+        setattr(instance, self.name, related)
+        self.save(instance)
+        return related
+
+    def to_odoo(self, value: 'ModelBase') -> int:
+        return value.id
 
 
-class ModelListField(Generic[Rel], RelatedField[Rel, 'QuerySet[Rel]']):
+class ModelListField(RelatedField):
 
-    def __set_name__(self, owner: Type[MB], name: str) -> None:
-        super().__set_name__(owner, name)
-
-        self.queryset_field_name = f'_field_{name}_queryset'
-
-    def __get__(self, instance: MB, owner: Type[MB]) -> Optional['QuerySet[Rel]']:
-        rel_ids = getattr(instance, self.value_field_name)
-        if rel_ids is None:
-            return None
-        else:
-            queryset = getattr(instance, self.queryset_field_name, None)
-            if queryset is None:
-                queryset = QuerySet(self.related_model).filter(id__in=rel_ids)
-                setattr(instance, self.queryset_field_name, queryset)
-            return queryset
+    def __init__(self, odoo_field_name: str = None, /, *, model: Target) -> None:
+        super().__init__(odoo_field_name, model=model)
 
     @cached_property
     def default_odoo_field_names(self) -> set[str]:
-        return {self.value_field_name}
+        return {f'{self.name}_ids'}
 
-    @cached_property
-    def value_field_name(self) -> str:
-        return f'{self.name}_ids'
+    def from_odoo(self, instance, **odoo_values: Any) -> None:
+        super().from_odoo(instance, **odoo_values)
 
-    @cached_property
-    def assignable_field_name(self) -> str:
-        return self.value_field_name
+        dummy_list = getattr(instance, self.name, [])
+        for dummy in dummy_list:
+            # TODO _id parameter is the same for all calls ><
+            dummy._completion_callback = lambda: self.completion_callback(instance, dummy.id)
 
-    def smart_set(self, instance: MB, values: dict[str, Optional[T]], *, initial=False) -> None:
-        if self.name in values:
-            value = values[self.name]
-            ids = [i.id for i in value]
+    def to_python(self, odoo_value: list[int]) -> list['ModelBase']:
+        if isinstance(self.related_model, LazyReference):
+            raise LazyReferenceNotResolved(f'Lazy reference for field {self.name} has not been resolved')
 
-            queryset = QuerySet(self.related_model).filter(id__in=ids)
-            queryset.cache = value
-            setattr(instance, self.queryset_field_name, queryset)
+        return [self.related_model(id=_id) for _id in odoo_value]
 
-            super().smart_set(instance, {self.value_field_name: ids}, initial=initial)
-        else:
-            super().smart_set(instance, values, initial=initial)
+    def completion_callback(self, instance, _id) -> 'ModelBase':
+        dummy_list = getattr(instance, self.name)
+        related = self.related_model.objects.get(id=_id)
+        related_list = [related if dummy.id == _id else dummy for dummy in dummy_list]
+        setattr(instance, self.name, related_list)
+        self.save(instance)
+        return related
 
-    def to_odoo(self, value: T) -> Any:
-        return [(6, '_', value)]
+    def to_odoo(self, value):
+        return [(6, '_', [i.id for i in value])]
 
 
-class QuerySet(Generic[MB]):
+class QuerySet:
 
-    def __init__(self, model: Type[MB]) -> None:
+    def __init__(self, model: Type['ModelBase']) -> None:
         self.model = model
-        self.cache: Optional[list[MB]] = None
+        self.cache: Optional[list[ModelBase]] = None
         self.filters: list[Filter] = []
         self.options: dict[str, Any] = {}
         self.prefetches: set[str] = set()
 
-    def __iter__(self) -> Iterable[MB]:
+    def __iter__(self):
         if self.cache is None:
-            self._execute()
+            self.cache = self._execute()
         return iter(self.cache)
 
-    def __getitem__(self, item: int) -> MB:
+    def __getitem__(self, item: int):
         if self.cache is None:
-            self._execute()
+            self.cache = self._execute()
         return self.cache[item]
 
     def __len__(self) -> int:
         if self.cache is None:
-            self._execute()
+            self.cache = self._execute()
         return len(self.cache)
 
     def __eq__(self, other) -> bool:
@@ -373,7 +349,7 @@ class QuerySet(Generic[MB]):
                          or self.cache is not None and self.cache == other.cache))
         return False
 
-    def _execute(self) -> list[MB]:
+    def _execute(self) -> list['ModelBase']:
         if 'fields' not in self.options:
             self.options['fields'] = list(self.model.all_fields_odoo_names())
 
@@ -387,18 +363,18 @@ class QuerySet(Generic[MB]):
         else:
             res = connection.execute(self.model.Meta.name, 'search_read', self.filters, **self.options)
 
-        self.cache = []
+        instances = []
         for data in res:
             for field in self.options['fields']:
                 if field not in data:
                     raise FieldDoesNotExist(self.model, field)
-            self.cache.append(self.model.from_odoo(**data))
+            instances.append(self.model.from_odoo(**data))
 
         self._prefetch(*list(self.prefetches))
 
-        return self.cache
+        return instances
 
-    def _enhance(self, **kwargs) -> 'QuerySet[MB]':
+    def _enhance(self, **kwargs) -> 'QuerySet':
         new = QuerySet(self.model)
         new.filters = self.filters.copy()
         new.options = self.options.copy()
@@ -434,27 +410,27 @@ class QuerySet(Generic[MB]):
 
         return new
 
-    def filter(self, **kwargs) -> 'QuerySet[MB]':
+    def filter(self, **kwargs) -> 'QuerySet':
         return self._enhance(filter=kwargs)
 
-    def values(self, *fields: str) -> 'QuerySet[MB]':
+    def values(self, *fields: str) -> 'QuerySet':
         return self._enhance(values=fields)
 
-    def limit(self, number: int) -> 'QuerySet[MB]':
+    def limit(self, number: int) -> 'QuerySet':
         return self._enhance(limit=number)
 
-    def order_by(self, *fields: str) -> 'QuerySet[MB]':
+    def order_by(self, *fields: str) -> 'QuerySet':
         return self._enhance(order_by=fields)
 
-    def prefetch(self, *field_names: str) -> 'QuerySet[MB]':
+    def prefetch(self, *field_names: str) -> 'QuerySet':
         return self._enhance(prefetch=field_names)
 
-    def get(self, **kwargs) -> MB:
+    def get(self, **kwargs) -> 'ModelBase':
         if kwargs:
             instances = self.filter(**kwargs)._execute()
         else:
             if self.cache is None:
-                self._execute()
+                self.cache = self._execute()
             instances = self.cache
 
         if len(instances) == 0:
@@ -477,7 +453,7 @@ class QuerySet(Generic[MB]):
     def _prefetch(self, *field_names: str) -> None:
         # Extract field names related to this prefetch
         #  merge subsequent ones according to their prefix
-        followings_by_field_name = {}
+        followings_by_field_name: dict[str, list[str]] = {}
         for field_name in sorted(field_names):
             if '__' in field_name:
                 field_name, following = field_name.split('__', maxsplit=1)
@@ -490,42 +466,43 @@ class QuerySet(Generic[MB]):
             field = self.model.fields[field_name]
 
             if isinstance(field, ModelField):
-                all_ids = set(getattr(instance, field.value_field_name) for instance in self
-                              if getattr(instance, field.value_field_name) is not None)
+                all_ids = set(getattr(instance, field.name).id for instance in self if getattr(instance, field_name))
 
                 related = field.related_model.objects.filter(id__in=sorted(all_ids))
                 if followings:
                     related = related.prefetch(*followings)
 
                 for instance in self:
-                    r_id = getattr(instance, field.value_field_name)
-                    if r_id is None:
+                    dummy = getattr(instance, field_name)
+                    if dummy is None:
                         continue
-                    rel = next(r for r in related if r.id == r_id)
+                    rel = next(r for r in related if r.id == dummy.id)
                     setattr(instance, field_name, rel)
+                    field.save(instance)
             elif isinstance(field, ModelListField):
                 all_ids = set()
                 for instance in self:
-                    all_ids |= set(getattr(instance, field.value_field_name))
+                    all_ids |= set([dummy.id for dummy in getattr(instance, field_name)])
 
                 related = field.related_model.objects.filter(id__in=sorted(all_ids))
                 if followings:
                     related = related.prefetch(*followings)
 
                 for instance in self:
-                    r_ids = getattr(instance, field.value_field_name)
+                    r_ids = [dummy.id for dummy in getattr(instance, field_name)]
                     rels = [r for r in related if r.id in r_ids]
-                    getattr(instance, field_name).cache = rels
+                    setattr(instance, field_name, rels)
+                    field.save(instance)
             else:
                 raise ValueError('Only support prefetch on RelatedFields')
 
 
-class Manager(Generic[MB]):
+class Manager:
 
-    def __init__(self, model: Type[MB]) -> None:
+    def __init__(self, model: Type['ModelBase']) -> None:
         self.model = model
 
-    def __getattr__(self, item: str) -> Callable[[], QuerySet[MB]]:
+    def __getattr__(self, item: str) -> Callable[[], QuerySet]:
         queryset = self.get_queryset()
 
         if item == 'all':
@@ -533,13 +510,13 @@ class Manager(Generic[MB]):
         else:
             return getattr(queryset, item)
 
-    def get_queryset(self) -> QuerySet[MB]:
-        return QuerySet[MB](self.model)
+    def get_queryset(self) -> QuerySet:
+        return QuerySet(self.model)
 
 
 class MetaModel(type):
 
-    def __init__(cls: Type[MB], name: str, bases: tuple[type], attrs: dict[str, Any]) -> None:
+    def __init__(cls, name: str, bases: tuple[type], attrs: dict[str, Any]) -> None:
         super().__init__(name, bases, attrs)
 
         cls.fields = {}
@@ -561,11 +538,12 @@ class MetaModel(type):
             cls.Meta.name = c2s(name)
 
 
-class ModelBase(Generic[MB], metaclass=MetaModel):
+class ModelBase(metaclass=MetaModel):
     fields: dict[str, Field]
-    objects: Manager[MB]
+    objects: Manager
 
     id = IntegerField()
+    name = StringField()
 
     class Meta:
         name: str
@@ -581,13 +559,14 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             if isinstance(field, RelatedField) and isinstance(field.related_model, LazyReference):
                 raise LazyReferenceNotResolved(f'Lazy reference for field {field.name} has not been resolved')
 
-            field.smart_set(self, values)
+        for field_name, value in values.items():
+            setattr(self, field_name, value)
 
     def __eq__(self, other) -> bool:
         if type(self) is type(other):
             for field in self.fields.values():
-                value = getattr(self, field.value_field_name)
-                other_value = getattr(other, field.value_field_name)
+                value = getattr(self, field.name)
+                other_value = getattr(other, field.name)
                 if value != other_value:
                     return False
             return True
@@ -600,7 +579,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
         string = f'{self.__class__.__name__} {{'
 
         for field in self.fields.values():
-            value = getattr(self, field.value_field_name)
+            value = getattr(self, field.name)
             if value is None:
                 continue
 
@@ -628,20 +607,19 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             yield name
 
     @classmethod
-    def from_odoo(cls, **odoo_values) -> MB:
+    def from_odoo(cls, **odoo_values) -> 'ModelBase':
         instance = cls()
 
         error_fields = []
         for field in instance.fields.values():
             try:
-                value = field.construct_and_validate(instance, **odoo_values)
-                field.smart_set(instance, {field.assignable_field_name: value}, initial=True)
-            except MissingField:
+                field.from_odoo(instance, **odoo_values)
+            except MissingValue:
                 error_fields.append(field)
 
         if error_fields:
             missing_field_names = sorted(reduce(lambda s, f: s | f.odoo_field_names, error_fields, set()))
-            raise IncompleteModel(instance, missing_field_names)
+            raise MissingValues(instance, missing_field_names)
 
         return instance
 
@@ -652,7 +630,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
                 continue
 
             try:
-                value = getattr(self, field.value_field_name)
+                value = getattr(self, field.name)
                 values.update(field.deconstruct(value))
             except ValueError:
                 raise IncompleteModel(self, sorted(field.odoo_field_names))
@@ -661,31 +639,32 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             raise InvalidModelState('Instance id update is not supported')
 
         if self.id is None:
-            self.id = self._field_id_initial = connection.execute(self.Meta.name, 'create', values)
+            self.id = connection.execute(self.Meta.name, 'create', values)
+            ModelBase.id.save(self)
         elif values:
             connection.execute(self.Meta.name, 'write', self.id, values)
 
         for field in self.fields.values():
             if field.has_changed(self):
-                field.set_unchanged(self)
+                field.save(self)
 
     def delete(self) -> None:
         connection.execute(self.Meta.name, 'unlink', [self.id])
-        self.id = self._field_id_initial = None
+        self.id = None
+        self.id.save(self)
 
 
-class Attachment(ModelBase['Attachment']):
-    name = StringField()
+class Attachment(ModelBase):
     content = B64Field('datas')
 
     class Meta:
         name = 'ir.attachment'
 
 
-class Model(Generic[MB], ModelBase[MB]):
+class Model(ModelBase):
 
     @property
-    def attachments(self) -> QuerySet[Attachment]:
+    def attachments(self) -> QuerySet:
         return Attachment.objects.filter(res_model=self.Meta.name, res_id=self.id)
 
     def render_report(self, report_name: str, **options) -> bytes:

@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 from xmlrpc.client import ServerProxy
 
 from odoo_orm.errors import (
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class OdooConnection:
-    CONNECTION: 'OdooConnection' = None
+    _CONNECTION: Optional['OdooConnection'] = None
 
     db: str
     uid: int
@@ -19,15 +19,15 @@ class OdooConnection:
     safe: bool
 
     def __init__(self) -> None:
-        if OdooConnection.CONNECTION:
+        if OdooConnection._CONNECTION:
             raise OdooConnectionAlreadyExists('Connection already set up!')
 
-        OdooConnection.CONNECTION = self
+        OdooConnection._CONNECTION = self
 
     @classmethod
     def get_connection(cls) -> 'OdooConnection':
-        if OdooConnection.CONNECTION:
-            return OdooConnection.CONNECTION
+        if OdooConnection._CONNECTION:
+            return OdooConnection._CONNECTION
         else:
             return cls()
 
@@ -54,7 +54,7 @@ class OdooConnection:
     def reports(self):
         return ServerProxy(f'{self.url}/xmlrpc/2/report')
 
-    def execute(self, model: str, action: str, *params, **options) -> list[dict[str, Any]]:
+    def execute(self, model: str, action: str, *params, **options):
         if not hasattr(self, 'models'):
             raise OdooConnectionNotConnected('You must connect before doing any request')
 

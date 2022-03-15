@@ -1,12 +1,13 @@
 from base64 import b64encode
 from datetime import date, datetime
+from decimal import Decimal
 from operator import attrgetter
 from unittest.mock import call, MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
+from odoo_orm.errors import FieldDoesNotExist, InvalidModelState, MissingValues
 from odoo_orm.orm import (
     Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, LazyReference,
     Manager, Model, ModelBase, ModelField, ModelListField, QuerySet, resolves, StringField,
@@ -27,23 +28,46 @@ def test_camel_to_snake_case():
 late_declared_model = LazyReference()
 
 
-class SomeModel(ModelBase['SomeModel']):
-    some_field = StringField()
-    some_related_field = ModelField(model=ModelBase)
-    some_list_field = ModelListField(model=ModelBase)
-    some_named_field = StringField('named_string')
-    some_null_field = StringField(null=True)
-    some_b64_field = B64Field()
-    some_boolean_field = BooleanField()
-    some_decimal_field = DecimalField()
-    some_date_field = DateField()
-    some_chain_field = ModelField(model='self')
-    some_chain_list_field = ModelListField(model='self')
-    some_nullable_related_field = ModelField(model=ModelBase, null=True)
-    some_datetime_field = DatetimeField()
-    some_resolvable_field = ModelField(model=late_declared_model)
+class Populable:
+    ODOO_DEFAULT_VALUES_DICT = None
+
+    @classmethod
+    def populate_odoo_return_values(cls, *odoo_return_values_list: list[dict]) -> tuple[list[dict]]:
+        for odoo_return_values in odoo_return_values_list:
+            for odoo_return_value in odoo_return_values:
+                for field, default_value in cls.ODOO_DEFAULT_VALUES_DICT.items():
+                    odoo_return_value.setdefault(field, default_value)
+
+        return odoo_return_values_list
+
+
+class OtherModel(Populable, ModelBase):
+    other_field: str = StringField()
 
     ODOO_DEFAULT_VALUES_DICT = {
+        'name': 'other',
+        'other_field': '',
+    }
+
+
+class SomeModel(Populable, ModelBase):
+    some_field: str = StringField()
+    some_related_field: 'OtherModel' = ModelField(model=OtherModel)
+    some_list_field: list['OtherModel'] = ModelListField(model=OtherModel)
+    some_named_field: str = StringField('named_string')
+    some_null_field: str = StringField(nullable=True)
+    some_b64_field: bytes = B64Field()
+    some_boolean_field: bool = BooleanField()
+    some_decimal_field: Decimal = DecimalField()
+    some_date_field: date = DateField()
+    some_chain_field: 'SomeModel' = ModelField(model='self')
+    some_chain_list_field: list['SomeModel'] = ModelListField(model='self')
+    some_nullable_related_field: ModelBase = ModelField(model=ModelBase, nullable=True)
+    some_datetime_field: datetime = DatetimeField()
+    some_resolvable_field: 'LateDeclaredModel' = ModelField(model=late_declared_model)
+
+    ODOO_DEFAULT_VALUES_DICT = {
+        'name': 'some',
         'some_field': '',
         'some_related_field_id': [999999, ''],
         'some_list_field_ids': [],
@@ -52,54 +76,24 @@ class SomeModel(ModelBase['SomeModel']):
         'some_b64_field': '',
         'some_boolean_field': False,
         'some_decimal_field': 0.0,
-        'some_date_field': datetime.strftime(datetime(1999, 1, 1), DateField.date_format),
+        'some_date_field': datetime.strftime(datetime(1999, 1, 1), DateField.DATE_FORMAT),
         'some_chain_field_id': [999999, ''],
         'some_chain_list_field_ids': [],
         'some_nullable_related_field_id': False,
-        'some_datetime_field': datetime.strftime(datetime(1999, 1, 1), DatetimeField.datetime_format),
+        'some_datetime_field': datetime.strftime(datetime(1999, 1, 1), DatetimeField.DATETIME_FORMAT),
         'some_resolvable_field_id': [999999, ''],
     }
 
-    @staticmethod
-    def populate_odoo_return_values(*odoo_return_values_list: list[dict]) -> tuple[list[dict], ...]:
-        for odoo_return_values in odoo_return_values_list:
-            for odoo_return_value in odoo_return_values:
-                for field, default_value in SomeModel.ODOO_DEFAULT_VALUES_DICT.items():
-                    odoo_return_value.setdefault(field, default_value)
-
-        return odoo_return_values_list
-
 
 @resolves(late_declared_model)
-class LateDeclaredModel(ModelBase['LateDeclaredModel']):
-    some_model = ModelField(model=SomeModel)
+class LateDeclaredModel(ModelBase):
+    some_model: SomeModel = ModelField(model=SomeModel)
 
 
 @pytest.fixture
 def basic_instance():
     return SomeModel.from_odoo(id=1, some_field='tut', some_related_field_id=[2, 'tut'], some_list_field_ids=[3, 4],
                                named_string='pouet')
-
-
-class CustomException(Exception):
-    pass
-
-
-# class MoneyField(Field[tuple[int, str]]):
-#
-#     def default_odoo_field_names(self) -> set[str]:
-#         return {f'{self.name}_amount', f'{self.name}_currency'}
-#
-#     def construct(self, **values: Any) -> Any:
-#         return (values[field_name] for field_name in self.odoo_field_names)
-#         value = values[self.odoo_field_name]
-#         if value is False:
-#             return None
-#         else:
-#             return self.to_python(value)
-#
-#     def deconstruct(self, value: T) -> dict:
-#         return {self.odoo_field_name: self.to_odoo(value)}
 
 
 class TestMetaModel:
@@ -111,7 +105,7 @@ class TestMetaModel:
                                  ('some_boolean_field', BooleanField), ('some_decimal_field', DecimalField),
                                  ('some_date_field', DateField), ('some_chain_field', ModelField),
                                  ('some_chain_list_field', ModelListField), ('some_nullable_related_field', ModelField),
-                                 ('some_datetime_field', DatetimeField), ('some_resolvable_field', ModelField)):
+                                 ('some_datetime_field', DatetimeField)):
             assert name in SomeModel.fields
             assert isinstance(SomeModel.fields[name], field_type)
 
@@ -136,17 +130,16 @@ class TestMetaModel:
 
 class TestField:
 
-    def test_disabled_fields_are_none(self):
+    def test_disabled_fields_are_undefined(self):
         instance = SomeModel()
-        assert instance.id is None
-        assert instance.some_field is None
-        assert instance.some_related_field is None
-        assert instance.some_list_field is None
-        assert instance.some_named_field is None
+        for field_name in instance.fields:
+            sentinel = object()
+            value = getattr(instance, field_name, sentinel)
+            assert value is sentinel
 
     def test_odoo_missing_fields(self):
-        with pytest.raises(IncompleteModel):
-            SomeModel.from_odoo(id=False)
+        with pytest.raises(MissingValues):
+            SomeModel.from_odoo(id=1, some_field=False)
 
     def test_odoo_missing_field_is_ok_if_null(self):
         instance = SomeModel.from_odoo(some_null_field=False)
@@ -180,41 +173,59 @@ class TestField:
                 .deconstruct(instance.some_datetime_field)) == {'some_datetime_field': datetime_str}
 
     @pytest.mark.connection_returns([{'id': 2}])
-    def test_model_field_get_from_id(self, spy_execute: MagicMock):
+    def test_model_field_access_local_id_or_name(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_related_field_id=[2, 'tut'])
         assert instance.some_related_field.id == 2
-        spy_execute.assert_called_once_with('model.base', 'read', [2], fields=['id'])
+        spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 2}]))
+    @pytest.mark.connection_returns(*OtherModel.populate_odoo_return_values([{'id': 2, 'other_field': 'yolo'}]))
+    def test_model_field_fetch_for_other_accesses(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(some_related_field_id=[2, 'tut'])
+        assert instance.some_related_field.other_field == 'yolo'
+        spy_execute.assert_called_once_with('other.model', 'read', [2], fields=list(OtherModel.all_fields_odoo_names()))
+
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 2, 'some_field': 'tut'}]))
     def test_chain_field(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_chain_field_id=[2, 'pouet'])
-        assert instance.some_chain_field.id == 2
+        assert instance.some_chain_field.some_field == 'tut'
         spy_execute.assert_called_once_with('some.model', 'read', [2], fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 3}, {'id': 4}])
-    def test_model_list_field_get_from_ids(self, spy_execute: MagicMock):
+    def test_model_list_field_access_local_ids(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_list_field_ids=[3, 4])
         assert list(map(attrgetter('id'), instance.some_list_field)) == [3, 4]
-        spy_execute.assert_called_once_with('model.base', 'read', [3, 4], fields=['id'])
+        spy_execute.assert_not_called()
 
-    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 3}, {'id': 4}]))
+    @pytest.mark.connection_returns(
+        *OtherModel.populate_odoo_return_values([{'id': 3, 'name': 'jean'}], [{'id': 4, 'name': 'jacques'}]))
+    def test_model_list_field_fetch_for_other_accesses(self, spy_execute: MagicMock):
+        instance = SomeModel.from_odoo(some_list_field_ids=[3, 4])
+        assert list(map(attrgetter('name'), instance.some_list_field)) == ['jean', 'jacques']
+        assert spy_execute.call_args_list == [
+            call('other.model', 'read', [3], fields=list(OtherModel.all_fields_odoo_names())),
+            call('other.model', 'read', [4], fields=list(OtherModel.all_fields_odoo_names())),
+        ]
+
+    @pytest.mark.connection_returns(
+        *SomeModel.populate_odoo_return_values([{'id': 3, 'name': 'jean'}, {'id': 4, 'name': 'pascal'}]))
     def test_chain_list_field(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_chain_list_field_ids=[3, 4])
-        assert list(map(attrgetter('id'), instance.some_chain_list_field)) == [3, 4]
+        assert list(map(attrgetter('name'), instance.some_chain_list_field)) == ['jean', 'pascal']
         spy_execute.assert_called_once_with('some.model', 'read', [3, 4],
                                             fields=list(SomeModel.all_fields_odoo_names()))
 
-    @pytest.mark.connection_returns([{'id': 1, 'some_model_id': [2, 'ohayou']}])
+    @pytest.mark.connection_returns([{'id': 1, 'name': 'okarin', 'some_model_id': [2, 'ohayou']}])
     def test_resolvable_field(self, spy_execute: MagicMock):
         instance = SomeModel.from_odoo(some_resolvable_field_id=[1, 'tutturu'])
         assert instance.some_resolvable_field.id == 1
+        spy_execute.assert_not_called()
+        assert instance.some_resolvable_field.some_model.id == 2
         spy_execute.assert_called_once_with('late.declared.model', 'read', [1],
                                             fields=list(LateDeclaredModel.all_fields_odoo_names()))
 
 
 class TestQuerySet:
 
-    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 42}]))
+    @pytest.mark.connection_returns(*SomeModel.populate_odoo_return_values([{'id': 42, 'name': 'pioup'}]))
     def test_can_iter(self, spy_execute: MagicMock):
         [instance] = list(QuerySet(SomeModel))
         spy_execute.assert_called_once_with('some.model', 'search_read', [],
