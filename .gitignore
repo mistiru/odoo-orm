@@ -1,3 +1,6 @@
 /dist/
 __pycache__/
 .pytest_cache/
+.coverage
+.python-version
+poetry.lock
