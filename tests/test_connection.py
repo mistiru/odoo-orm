@@ -9,7 +9,7 @@ class TestConnectionCreation:
 
     @staticmethod
     def setup():
-        OdooConnection.CONNECTION = None
+        OdooConnection._CONNECTION = None
 
     def test_create_one_connection(self):
         odoo = OdooConnection()
