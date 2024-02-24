@@ -1,15 +1,16 @@
-from _zoneinfo import ZoneInfo
 from base64 import b64encode
 from datetime import date, datetime
 from operator import attrgetter
 from unittest.mock import call, MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from odoo_orm.errors import FieldDoesNotExist, IncompleteModel, InvalidModelState
-from odoo_orm.orm import (Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField,
-                          LazyReference, Manager, Model, ModelBase, ModelField, ModelListField, QuerySet, resolves,
-                          StringField)
+from odoo_orm.orm import (
+    Attachment, B64Field, BooleanField, c2s, DateField, DatetimeField, DecimalField, IntegerField, LazyReference,
+    Manager, Model, ModelBase, ModelField, ModelListField, QuerySet, resolves, StringField,
+)
 
 
 def test_camel_to_snake_case():
@@ -60,7 +61,7 @@ class SomeModel(ModelBase['SomeModel']):
     }
 
     @staticmethod
-    def populate_odoo_return_values(*odoo_return_values_list: list[dict]) -> tuple[list[dict]]:
+    def populate_odoo_return_values(*odoo_return_values_list: list[dict]) -> tuple[list[dict], ...]:
         for odoo_return_values in odoo_return_values_list:
             for odoo_return_value in odoo_return_values:
                 for field, default_value in SomeModel.ODOO_DEFAULT_VALUES_DICT.items():
@@ -390,7 +391,7 @@ class TestQuerySet:
     def test_prefetch_on_model_list(self, spy_execute: MagicMock):
         queryset = QuerySet(SomeModel).prefetch('some_list_field')
         spy_execute.assert_not_called()
-        instances = list(queryset)
+        instances: list[SomeModel] = list(queryset)
         assert spy_execute.call_args_list == [
             call('some.model', 'search_read', [], fields=list(SomeModel.all_fields_odoo_names())),
             call('model.base', 'read', [2, 3, 4], fields=list(ModelBase.all_fields_odoo_names())),

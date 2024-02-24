@@ -1,14 +1,15 @@
 import pytest
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import (OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected,
-                             UnsafeOperationNotAllowed)
+from odoo_orm.errors import (
+    OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected, UnsafeOperationNotAllowed,
+)
 
 
 class TestConnectionCreation:
 
-    @staticmethod
-    def setup():
+    @pytest.fixture(autouse=True)
+    def reset_connection(self):
         OdooConnection.CONNECTION = None
 
     def test_create_one_connection(self):

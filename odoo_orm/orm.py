@@ -7,8 +7,9 @@ from typing import Any, Callable, Generic, Iterable, Optional, Type, TypeVar, Un
 from zoneinfo import ZoneInfo
 
 from odoo_orm.connection import OdooConnection
-from odoo_orm.errors import (FieldDoesNotExist, IncompleteModel, InvalidModelState, LazyReferenceNotResolved,
-                             MissingField)
+from odoo_orm.errors import (
+    FieldDoesNotExist, IncompleteModel, InvalidModelState, LazyReferenceNotResolved, MissingField,
+)
 
 connection = OdooConnection.get_connection()
 
@@ -365,7 +366,7 @@ class QuerySet(Generic[MB]):
         return len(self.cache)
 
     def __eq__(self, other) -> bool:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return (self.filters == other.filters
                     and self.options == other.options
                     and (self.cache is None and other.cache is None and self.prefetches == other.prefetches
@@ -583,7 +584,7 @@ class ModelBase(Generic[MB], metaclass=MetaModel):
             field.smart_set(self, values)
 
     def __eq__(self, other) -> bool:
-        if type(self) == type(other):
+        if type(self) is type(other):
             for field in self.fields.values():
                 value = getattr(self, field.value_field_name)
                 other_value = getattr(other, field.value_field_name)

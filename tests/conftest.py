@@ -15,13 +15,16 @@ class OdooServerProxy:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def authenticate(self, *args, **kwargs):
+    @staticmethod
+    def authenticate(*_args, **_kwargs):
         return 1
 
-    def execute_kw(self, db, uid, password, model, action, params, options):
+    @staticmethod
+    def execute_kw(db, uid, password, model, action, params, options):
         return db, uid, password, model, action, params, options
 
-    def render_report(self, db, uid, password, report_name, model_ids, options):
+    @staticmethod
+    def render_report(db, uid, password, report_name, model_ids, options):
         return db, uid, password, report_name, model_ids, options
 
 
@@ -65,10 +68,10 @@ class OdooConnectionProxy:
         else:
             return None
 
-    def execute(self, *args, **kwargs):
+    def execute(self, *_args, **_kwargs):
         return self._next_data()
 
-    def render_report(self, *args, **kwargs):
+    def render_report(self, *_args, **_kwargs):
         return self._next_data()
 
 
