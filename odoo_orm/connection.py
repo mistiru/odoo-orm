@@ -2,8 +2,9 @@ import logging
 from typing import Any
 from xmlrpc.client import ServerProxy
 
-from odoo_orm.errors import OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected, \
-    UnsafeOperationNotAllowed
+from odoo_orm.errors import (
+    OdooConnectionAlreadyExists, OdooConnectionError, OdooConnectionNotConnected, UnsafeOperationNotAllowed,
+)
 
 logger = logging.getLogger(__name__)
 
