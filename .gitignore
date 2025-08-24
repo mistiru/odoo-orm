@@ -1,6 +1,17 @@
-/dist/
+# Python-generated files
 __pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Tests
 .pytest_cache/
 /.coverage
-/poetry.lock
-/.idea/
+
+# Because it is a lib
+/uv.lock

@@ -18,20 +18,18 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup uv and set the python version
+        uses: astral-sh/setup-uv@v6
         with:
-          cache: pip
-          python-version: 3.11
-      - name: Set up Poetry
-        uses: Gr1N/setup-poetry@v9
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
 
       - name: Check version consistency
         run: |
-          [[ "$(poetry version -s)" == "$(git describe --tags)" ]]
+          [[ "$(uv version)" == "$(git describe --tags)" ]]
 
       - name: Build project
-        run: poetry build
+        run: uv build
 
       - name: Create Release
         uses: ncipollo/release-action@v1
@@ -41,5 +39,5 @@ jobs:
 
       - name: Publish to PyPI
         env:
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: poetry publish -u __token__ -p "$PYPI_TOKEN"
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish

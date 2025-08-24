@@ -1,19 +1,36 @@
-[tool.poetry]
+[project]
 name = "odoo-orm"
 version = "2.3.3"
 description = "A kind of Python ORM for Odoo XML-RPC API inspired by Django ORM."
-authors = ["mistiru <dev@mistiru.me>"]
+authors = [
+    { name = "mistiru", email = "dev@mistiru.me" },
+]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/mistiru/odoo-orm"
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 
-[tool.poetry.dependencies]
-python = "^3.9"
+[project.urls]
+source = "https://github.com/mistiru/odoo-orm"
 
-[tool.poetry.dev-dependencies]
-pytest-mock = "^3.7.0"
-pytest-cov = "^4.1.0"
+[dependency-groups]
+dev = [
+    "pytest-mock~=3.7",
+    "pytest-cov~=4.1",
+]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.8.13,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = [
+    "tutturu",
+]

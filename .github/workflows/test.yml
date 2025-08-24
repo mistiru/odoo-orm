@@ -18,18 +18,17 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Setup uv and set the python version
+        uses: astral-sh/setup-uv@v6
         with:
-          cache: pip
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
-      - name: Setup Poetry
-        uses: Gr1N/setup-poetry@v9
-      - name: Install project
-        run: poetry install
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
 
       - name: Run tests
-        run: poetry run python -Wa -m pytest --cov=odoo_orm --cov-report xml tests
+        run: uv run python -Wa -m pytest --cov=odoo_orm --cov-report xml tests
 
       - name: Upload coverage results
         uses: codecov/codecov-action@v4
