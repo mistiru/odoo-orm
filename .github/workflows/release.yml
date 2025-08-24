@@ -26,7 +26,7 @@ jobs:
 
       - name: Check version consistency
         run: |
-          [[ "$(uv version)" == "$(git describe --tags)" ]]
+          [[ "$(uv version --short)" == "$(git describe --tags)" ]]
 
       - name: Build project
         run: uv build

@@ -1,6 +1,6 @@
 [project]
 name = "odoo-orm"
-version = "2.3.3"
+version = "3.0.0"
 description = "A kind of Python ORM for Odoo XML-RPC API inspired by Django ORM."
 authors = [
     { name = "mistiru", email = "dev@mistiru.me" },
